@@ -50,24 +50,25 @@ impl RelatedEGraph {
         var_cols: &[VarColsScanRule],
         binding: SmallVec<[(ColumnIndex, Constraint); 4]>,
     ) -> Set<Row> {
-        let mut cartesian_product: Set<Row> = Set::default();
-        loop {
-            if var_cols.is_empty() {
-                return cartesian_product;
-            }
-            let cols = &var_cols[0];
-            if cartesian_product.is_empty() {
-                let set = cols
-                    .iter()
-                    .map(|fusion| self.fused_scan(fusion, binding.clone()))
-                    .reduce(|l, r| l.intersection(&r).copied().collect())
-                    .unwrap_or_default();
-                cartesian_product = set.iter().map(|id| Row(smallvec![*id])).collect();
-                continue;
-            }
-            let r = cartesian_product
+        let Some(cols) = var_cols.first() else {
+            return Set::default();
+        };
+
+        let mut rows: Set<Row> = cols
+            .iter()
+            .map(|fusion| self.fused_scan(fusion, binding.clone()))
+            .reduce(|l, r| l.intersection(&r).copied().collect())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|id| Row(smallvec![id]))
+            .collect();
+
+        let rest = &var_cols[1..];
+
+        for cols in rest {
+            rows = rows
                 .iter()
-                .map(|row| {
+                .flat_map(|row| {
                     let set = cols
                         .iter()
                         .map(|fused_scan| {
@@ -85,10 +86,9 @@ impl RelatedEGraph {
                         })
                         .collect::<Set<Row>>()
                 })
-                .flatten()
                 .collect();
-            cartesian_product = r;
         }
+        rows
     }
 
     fn fused_scan(
