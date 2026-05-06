@@ -5,7 +5,7 @@ use smallvec::{SmallVec, ToSmallVec, smallvec};
 
 use crate::{
     common::{ColumnIndex, Id, RowIndex, Set},
-    rule::{Action, Constraint, FusedScan, Op, Rule, VarColsScanRule},
+    rule::{Action, Constraint, CrossConstraint, FusedScan, Op, Rule, VarColsScanRule},
     table::{Row, Table},
     uf::UnionFind,
 };
@@ -44,7 +44,7 @@ impl RelatedEGraph {
     }
 
     pub fn run_rule(&mut self, rule: &Rule) -> bool {
-        let rows = self.run_query(&rule.var_cols, smallvec![]);
+        let rows = self.run_query(&rule.var_cols, &rule.constraints, smallvec![]);
         if rows.is_empty() {
             return false;
         }
@@ -76,6 +76,7 @@ impl RelatedEGraph {
     pub fn run_query(
         &self,
         var_cols: &[VarColsScanRule],
+        cross_rules: &[CrossConstraint],
         binding: SmallVec<[(ColumnIndex, Constraint); 4]>,
     ) -> Set<Row> {
         let Some(cols) = var_cols.first() else {
@@ -113,6 +114,24 @@ impl RelatedEGraph {
                             row
                         })
                         .collect::<Set<Row>>()
+                })
+                .filter(|row| {
+                    cross_rules.iter().all(|cs| {
+                        let Some(lhs) = row.0.get(cs.lhs.0) else {
+                            return true;
+                        };
+                        let Some(rhs) = row.0.get(cs.rhs.0) else {
+                            return true;
+                        };
+                        match cs.op {
+                            Op::Equ => lhs == rhs,
+                            Op::Neq => lhs != rhs,
+                            Op::Lt => lhs < rhs,
+                            Op::Gt => lhs > rhs,
+                            Op::Leq => lhs <= rhs,
+                            Op::Geq => lhs >= rhs,
+                        }
+                    })
                 })
                 .collect();
         }

@@ -26,7 +26,8 @@ pub struct Constraint {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CrossConstraint {
     pub op: Op,
-    pub var: Variable,
+    pub lhs: Variable,
+    pub rhs: Variable,
 }
 
 /// table -> column -> constraints
@@ -34,9 +35,10 @@ pub type VarColsScanRule = Box<[FusedScan]>;
 
 #[derive(Debug, Clone)]
 pub struct Rule {
-    pub var_order: SmallVec<[Variable; 4]>,
+    pub head_var_order: SmallVec<[Variable; 4]>,
     pub var_cols: Box<[VarColsScanRule]>,
     pub constraints: SmallVec<[CrossConstraint; 2]>,
+    pub body_var_order: SmallVec<[Variable; 4]>,
     pub actions: SmallVec<[Action; 2]>,
 }
 
