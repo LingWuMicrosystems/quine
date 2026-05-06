@@ -2,7 +2,11 @@ use alloc::vec::Vec;
 use core::hash::Hash;
 use smallvec::{SmallVec, ToSmallVec};
 
-use crate::common::{Id, Map, RowIndex};
+use crate::{
+    common::{ColumnIndex, Id, Map, RowIndex, Set},
+    rule::{Constraint, Op},
+    uf::UnionFind,
+};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub struct Row(pub SmallVec<[Id; 4]>);
@@ -11,7 +15,6 @@ pub struct Row(pub SmallVec<[Id; 4]>);
 pub struct Table {
     pub arity: usize,
     pub rows: Vec<Id>,
-    pub last_scan_end: usize,
     pub key_index: Map<Row, RowIndex>,
     pub parents: Map<Id, Vec<RowIndex>>,
 }
@@ -23,8 +26,33 @@ impl Table {
             rows: Default::default(),
             key_index: Default::default(),
             parents: Default::default(),
-            last_scan_end: Default::default(),
         }
+    }
+
+    pub fn fused_scan(
+        &self,
+        uf: &UnionFind,
+        find_column: ColumnIndex,
+        cs: &[(ColumnIndex, Constraint)],
+    ) -> Set<Id> {
+        self.rows
+            .chunks(self.arity)
+            .map(|row: &[Id]| Row(row.iter().map(|id| uf.find(*id)).collect()))
+            .filter(|row| {
+                cs.iter().all(|(column, constraint)| {
+                    let value = row.0[column.0];
+                    match constraint.op {
+                        Op::Equ => value == constraint.id,
+                        Op::Neq => value != constraint.id,
+                        Op::Lt => value < constraint.id,
+                        Op::Gt => value > constraint.id,
+                        Op::Leq => value <= constraint.id,
+                        Op::Geq => value >= constraint.id,
+                    }
+                })
+            })
+            .map(|row| row.0[find_column.0])
+            .collect()
     }
 
     #[inline]

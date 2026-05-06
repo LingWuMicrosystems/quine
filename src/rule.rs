@@ -1,0 +1,60 @@
+use alloc::{boxed::Box, vec::Vec};
+use smallvec::SmallVec;
+
+use crate::{
+    common::{ColumnIndex, Id, Variable},
+    regraph::TableId,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Op {
+    Equ,
+    Neq,
+    Lt,
+    Gt,
+    Leq,
+    Geq,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Constraint {
+    pub op: Op,
+    pub id: Id,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CrossConstraint {
+    pub op: Op,
+    pub var: Variable,
+}
+
+/// table -> column -> constraints
+pub type VarColsScanRule = Box<[FusedScan]>;
+
+#[derive(Debug, Clone)]
+pub struct Rule {
+    pub var_order: SmallVec<[Variable; 4]>,
+    pub var_cols: Box<[VarColsScanRule]>,
+    pub constraints: SmallVec<[CrossConstraint; 2]>,
+    pub actions: SmallVec<[Action; 2]>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FusedScan {
+    pub table: TableId,
+    pub column: ColumnIndex,
+    pub constraints: Option<Constraint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Action {
+    Union(Atom, Atom),
+    Insert(TableId, Vec<Atom>),
+    // Delete(TableId, Variable),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Atom {
+    Const(Id),
+    Var(Variable),
+}
