@@ -1,11 +1,11 @@
 /// related e-graph
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use smallvec::{SmallVec, ToSmallVec, smallvec};
 
 use crate::{
-    common::{ColumnIndex, Id, Map, RowIndex, Set},
-    rule::{Constraint, FusedScan, Op, Rule, VarColsScanRule},
+    common::{ColumnIndex, Id, RowIndex, Set},
+    rule::{Action, Constraint, FusedScan, Op, Rule, VarColsScanRule},
     table::{Row, Table},
     uf::UnionFind,
 };
@@ -17,12 +17,9 @@ pub struct RelatedEGraph {
     union_find: UnionFind,
 
     tables: Vec<Table>,
-    table_map: Map<String, TableId>,
 
     next_id: Id,
     pending_unions: Vec<(Id, Id)>,
-
-    rules: Vec<Rule>,
 }
 
 pub enum Subset {
@@ -31,18 +28,44 @@ pub enum Subset {
 }
 
 impl RelatedEGraph {
-    pub fn run(&mut self) -> bool {
-        loop {
-            for rule in &self.rules {
-                self.run_rule(rule);
-            }
+    pub fn run(&mut self, rules: &[Rule]) {
+        // TODO: need scheduler
+        let mut dirty = false;
+        for rule in rules {
+            let result = self.run_rule(rule);
+            dirty |= result;
+        }
+        if dirty {
             self.rebuild();
         }
     }
 
-    pub fn run_rule(&self, rule: &Rule) {
-        let matches = self.run_query(&rule.var_cols, smallvec![]);
-        todo!()
+    pub fn run_rule(&mut self, rule: &Rule) -> bool {
+        let rows = self.run_query(&rule.var_cols, smallvec![]);
+        if rows.is_empty() {
+            return false;
+        }
+        self.apply_actions(&rule.actions, &rows);
+        true
+    }
+
+    pub fn apply_actions(&mut self, actions: &[Action], rows: &Set<Row>) {
+        for action in actions {
+            match action {
+                Action::Union(a, b) => {
+                    for row in rows.iter() {
+                        self.union_find.union(a.resolve(row), b.resolve(row));
+                    }
+                }
+                Action::Insert(table_id, action_row) => {
+                    for row in rows.iter() {
+                        let row = action_row.iter().map(|a| a.resolve(row)).collect();
+                        let new_id = self.alloc_id();
+                        self.insert(*table_id, Row(row), new_id);
+                    }
+                } // Action::Delete(table_id, _) => self.delete(*table_id),
+            }
+        }
     }
 
     pub fn run_query(
@@ -73,7 +96,7 @@ impl RelatedEGraph {
                         .iter()
                         .map(|fused_scan| {
                             let mut full_binding = binding.clone();
-                            full_binding.extend(row_bindings(var_cols, fused_scan.table, &row));
+                            full_binding.extend(row_bindings(var_cols, fused_scan.table, row));
                             self.fused_scan(fused_scan, full_binding)
                         })
                         .reduce(|l, r| l.intersection(&r).copied().collect())
@@ -151,6 +174,12 @@ impl RelatedEGraph {
                 .collect::<Vec<_>>();
             self.pending_unions.extend(pending);
         }
+    }
+
+    pub fn alloc_id(&mut self) -> Id {
+        let id = self.next_id;
+        self.next_id = Id(id.0 + 1);
+        id
     }
 }
 

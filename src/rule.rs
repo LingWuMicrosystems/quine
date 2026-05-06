@@ -4,6 +4,7 @@ use smallvec::SmallVec;
 use crate::{
     common::{ColumnIndex, Id, Variable},
     regraph::TableId,
+    table::Row,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -48,7 +49,7 @@ pub struct FusedScan {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Action {
-    Union(Atom, Atom),
+    Union(Variable, Variable),
     Insert(TableId, Vec<Atom>),
     // Delete(TableId, Variable),
 }
@@ -57,4 +58,19 @@ pub enum Action {
 pub enum Atom {
     Const(Id),
     Var(Variable),
+}
+
+impl Atom {
+    pub fn resolve(&self, row: &Row) -> Id {
+        match self {
+            Atom::Const(id) => *id,
+            Atom::Var(i) => i.resolve(row),
+        }
+    }
+}
+
+impl Variable {
+    pub fn resolve(&self, row: &Row) -> Id {
+        row.0[self.0]
+    }
 }
