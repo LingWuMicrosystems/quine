@@ -1,0 +1,9 @@
+[package]
+name = "quine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rayon = "1.12.0"
+rustc-hash = "2.1.2"
+smallvec = "1.15.1"
