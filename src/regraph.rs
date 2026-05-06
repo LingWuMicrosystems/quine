@@ -52,9 +52,11 @@ impl RelatedEGraph {
     pub fn apply_actions(&mut self, actions: &[Action], rows: &Set<Row>) {
         for action in actions {
             match action {
-                Action::Union(a, b) => {
+                Action::Union(lhs, rhs) => {
                     for row in rows.iter() {
-                        self.union_find.union(a.resolve(row), b.resolve(row));
+                        let lhs = lhs.resolve(row);
+                        let rhs = rhs.resolve(row);
+                        self.pending_unions.push((lhs, rhs));
                     }
                 }
                 Action::Insert(table_id, action_row) => {
