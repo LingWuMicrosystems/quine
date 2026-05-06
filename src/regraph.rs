@@ -31,11 +31,14 @@ impl RelatedEGraph {
     pub fn run(&mut self, rules: &[Rule]) {
         // TODO: need scheduler
         let mut dirty = false;
-        for rule in rules {
-            let result = self.run_rule(rule);
-            dirty |= result;
-        }
-        if dirty {
+        loop {
+            for rule in rules {
+                let result = self.run_rule(rule);
+                dirty |= result;
+            }
+            if !dirty {
+                return;
+            }
             self.rebuild();
         }
     }
