@@ -126,10 +126,14 @@ impl RelatedEGraph {
                         match cs.op {
                             Op::Equ => lhs == rhs,
                             Op::Neq => lhs != rhs,
-                            Op::Lt => lhs < rhs,
-                            Op::Gt => lhs > rhs,
-                            Op::Leq => lhs <= rhs,
-                            Op::Geq => lhs >= rhs,
+                            Op::Lt => (lhs.0 as i32) < (rhs.0 as i32),
+                            Op::Gt => (lhs.0 as i32) > (rhs.0 as i32),
+                            Op::Leq => (lhs.0 as i32) <= (rhs.0 as i32),
+                            Op::Geq => (lhs.0 as i32) >= (rhs.0 as i32),
+                            Op::Ltu => lhs < rhs,
+                            Op::Gtu => lhs > rhs,
+                            Op::Lequ => lhs <= rhs,
+                            Op::Gequ => lhs >= rhs,
                         }
                     })
                 })

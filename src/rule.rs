@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec::Vec};
+use alloc::boxed::Box;
 use smallvec::SmallVec;
 
 use crate::{
@@ -15,6 +15,10 @@ pub enum Op {
     Gt,
     Leq,
     Geq,
+    Ltu,
+    Gtu,
+    Lequ,
+    Gequ,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -52,7 +56,7 @@ pub struct FusedScan {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Action {
     Union(Variable, Variable),
-    Insert(TableId, Vec<Atom>),
+    Insert(TableId, Box<[Atom]>),
     // Delete(TableId, Variable),
 }
 

@@ -44,10 +44,14 @@ impl Table {
                     match constraint.op {
                         Op::Equ => value == constraint.id,
                         Op::Neq => value != constraint.id,
-                        Op::Lt => value < constraint.id,
-                        Op::Gt => value > constraint.id,
-                        Op::Leq => value <= constraint.id,
-                        Op::Geq => value >= constraint.id,
+                        Op::Lt => (value.0 as i32) < (constraint.id.0 as i32),
+                        Op::Gt => (value.0 as i32) > (constraint.id.0 as i32),
+                        Op::Leq => (value.0 as i32) <= (constraint.id.0 as i32),
+                        Op::Geq => (value.0 as i32) >= (constraint.id.0 as i32),
+                        Op::Ltu => value < constraint.id,
+                        Op::Gtu => value > constraint.id,
+                        Op::Lequ => value <= constraint.id,
+                        Op::Gequ => value >= constraint.id,
                     }
                 })
             })
