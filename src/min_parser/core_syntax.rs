@@ -1,0 +1,442 @@
+use alloc::boxed::Box;
+use alloc::collections::btree_map::BTreeMap;
+use alloc::format;
+use alloc::rc::Rc;
+use alloc::string::{String, ToString};
+use alloc::vec;
+use alloc::vec::Vec;
+
+use crate::min_parser::parser::category::{
+    Assoc, Category, ParserContext, ParserEnv, ParserFn, ParserResult, TrailingParserFn, parse_inside_group
+};
+use crate::min_parser::tokenize::grouper::parse_brackets;
+use crate::min_parser::tokenize::scanner::scan_tokens;
+use crate::min_parser::tokenize::token::TokenKind;
+use crate::min_parser::tokenize::{
+    token_tree::{GroupKind, TokenTree},
+};
+use crate::rule::Op;
+use crate::syntax::{Atom, AtomOrVariable, Body, Command, Expr, Fact, FunctionCall, Head, Pattern, Rule};
+
+fn make_app<'a>(func: Expr, arg: Expr) -> Result<Expr, String> {
+    match func {
+        Expr::AtomOrVariable(AtomOrVariable::Variable(v)) =>
+            Ok(Expr::FunctionCall(FunctionCall(v, Box::new([arg])))),
+        Expr::FunctionCall(call) => {
+            let mut args = call.1.to_vec();
+            args.push(arg);
+            Ok(Expr::FunctionCall(FunctionCall(call.0, args.into())))
+        },
+        Expr::AtomOrVariable(AtomOrVariable::Atom(_)) => Err("Cannot apply to atom".into()),
+    }
+}
+
+const KEYWORDS: [ &str; 8 ] = [ "if", "leteq", "union", "insert", "rule", "fact", "true", "false" ];
+
+#[must_use]
+pub fn build_expr_parser_env() -> ParserEnv<Expr> {
+    let mut cat = Category::<Expr>::default();
+
+    cat.leading.insert(
+        "@ident".to_string(),
+        Rc::new(|ctx, _env| {
+            let (name, ctx) = ctx.expect_ident()?;
+            Ok((Expr::AtomOrVariable(AtomOrVariable::Variable(name)), ctx))
+        }),
+    );
+
+    let parse_int: fn(bool) -> Rc<ParserFn<Expr>> = |is_neg| Rc::new(move |ctx, _env| {
+        let (token, ctx) = ctx.next_token()?;
+        let TokenTree::Token(t) = token else {
+            return Err("Expected integer token".into());
+        };
+
+        let text = t.text;
+        let num = match t.kind {
+            TokenKind::IntDec => text.replace('_', "").parse::<u64>(),
+            TokenKind::IntHex => u64::from_str_radix(&text.replace('_', "")[2..], 16),
+            TokenKind::IntBin => u64::from_str_radix(&text.replace('_', "")[2..], 2),
+            _ => return Err("Expected integer token".into()),
+        }.map_err(|_| "Invalid integer")?;
+
+        if is_neg {
+            let num = i64::try_from(num)
+                .map_err(|_| "Invalid integer")?;
+            let num = - num;    // never overflow, since num is always positive
+            Ok((Expr::AtomOrVariable(AtomOrVariable::Atom(Atom::Int(num))), ctx))
+        } else {
+            Ok((Expr::AtomOrVariable(AtomOrVariable::Atom(Atom::Uint(num))), ctx))
+        }
+    });
+
+    cat.leading.insert("@int".to_string(), parse_int(false));
+    let neg_parse_int = parse_int(true).clone();
+    cat.leading.insert("-".into(), Rc::new(move |ctx, env| {
+        let (_, ctx) = ctx.next_token()?;
+        (*neg_parse_int)(ctx, env)
+    }));
+
+    let expect_string = "Expected string token";
+    cat.leading.insert(
+        "@str".to_string(),
+        Rc::new(|ctx, _env| {
+            let (token, ctx) = ctx.next_token()?;
+            let TokenTree::Token(t) = token else {
+                return Err(expect_string.into());
+            };
+
+            let text = t.text;
+            let str_lit = match t.kind {
+                TokenKind::String => text,
+                _ => return Err(expect_string.into()),
+            };
+
+            let expr = Expr::AtomOrVariable(AtomOrVariable::Variable(str_lit.into()));
+            Ok((expr, ctx))
+        }),
+    );
+
+    // cat.leading.insert(
+    //     "let".to_string(),
+    //     Rc::new(|ctx, env| {
+    //         let (_, ctx) = ctx.next_token()?;
+    //         let (name, ctx) = ctx.expect_ident()?;
+    //         let ((), ctx) = ctx.expect("=")?;
+    //         let (val, ctx) = ctx.parse(env, "Expr", 0)?;
+    //         let val = val.unwrap_expr()?;
+
+    //         Ok((Body::Let(name, val).into(), ctx))
+    //     }),
+    // );
+
+    // Keywords that cannot be used as expressions
+    let reg_keyword = |name: &str| {
+        let name = name.to_string(); //trick
+        cat.leading.insert(
+            name.clone(),
+            Rc::new(move |_ctx, _env| {
+                Err(format!(
+                    "'{name}' is a keyword and cannot be used as an expression"
+                ))
+            }),
+        );
+    };
+
+    KEYWORDS.iter().map(|x| *x).for_each(reg_keyword);
+
+    // after initializing keywords, this will overwrite "true" record in `cat`.
+    cat.leading.insert("true".into(), Rc::new(|ctx, env| {
+        let (_, ctx) = ctx.next_token()?;
+        Ok((Expr::AtomOrVariable(AtomOrVariable::Atom(Atom::Bool(true))), ctx))
+    }));
+    
+    cat.leading.insert("false".into(), Rc::new(|ctx, env| {
+        let (_, ctx) = ctx.next_token()?;
+        Ok((Expr::AtomOrVariable(AtomOrVariable::Atom(Atom::Bool(false))), ctx))
+    }));
+
+    cat.leading.insert(
+        "@paren".to_string(),
+        Rc::new(|ctx, env| {
+            let (group, ctx) = ctx.next_token()?;
+            let r =
+                parse_inside_group(group, GroupKind::Paren, |inner| inner.parse(env, "Expr", 0))?;
+            Ok((r, ctx))
+        }),
+    );
+
+    let explicit_app: Rc<TrailingParserFn<Expr>> = Rc::new(|ctx, env, left, bp| {
+        let (arg_expr, ctx) = ctx.parse(env, "Expr", bp)?;
+        let expr = make_app(left, arg_expr)?;
+        Ok((expr, ctx))
+    });
+
+    cat.trailing.insert(
+        "@ident".to_string(),
+        (100, Assoc::Left, explicit_app.clone()),
+    );
+
+    cat.trailing.insert(
+        "@paren".to_string(),
+        (100, Assoc::Left, explicit_app.clone()),
+    );
+
+    let mut env = ParserEnv {
+        categories: BTreeMap::new(),
+    };
+
+    env.categories.insert("Expr".to_string(), cat);
+    env
+}
+
+pub fn build_pattern_parser_env() -> ParserEnv<Pattern> {
+    let mut cat = Category::<Pattern>::default();
+
+    cat.leading.insert(
+        "@ident".into(),
+        Rc::new(|ctx, _env| {
+            let (name, ctx) = ctx.expect_ident()?;
+            Ok((Pattern::AtomOrVariable(AtomOrVariable::Variable(name)), ctx))
+        }),
+    );
+
+    cat.leading.insert("_".into(), Rc::new(|ctx, env| {
+        let (_, ctx) = ctx.next_token()?;
+
+        Ok((Pattern::Wildcard, ctx))
+    }));
+
+    cat.leading.insert(
+        "@paren".to_string(),
+        Rc::new(|ctx, env| {
+            let (group, ctx) = ctx.next_token()?;
+            let r = parse_inside_group(group, GroupKind::Paren, |inner| {
+                inner.parse(env, "Pattern", 0)
+            })?;
+            Ok((r, ctx))
+        }),
+    );
+
+    // Keywords that cannot be used as expressions
+    let reg_keyword = |name: &str| {
+        let name = name.to_string(); //trick
+        cat.leading.insert(
+            name.clone(),
+            Rc::new(move |_ctx, _env| {
+                Err(format!(
+                    "'{name}' is a keyword and cannot be used as an pattern"
+                ))
+            }),
+        );
+    };
+
+    KEYWORDS.iter().map(|x| *x).for_each(reg_keyword);
+
+    let explicit_app: Rc<TrailingParserFn<Pattern>> = Rc::new(|ctx, env, left, bp| {
+        let (arg_pat, ctx) = ctx.parse(env, "Pattern", bp)?;
+        let p = match left {
+            Pattern::Wildcard | Pattern::AtomOrVariable(AtomOrVariable::Atom(_)) => return Err("Unexpected pattern".into()),
+            Pattern::AtomOrVariable(AtomOrVariable::Variable(v)) => {
+                Pattern::Constructor(v, Box::new([ arg_pat ]))
+            },
+            Pattern::Constructor(f, patterns) => {
+                let mut patterns = patterns.to_vec();
+                patterns.push(arg_pat);
+                Pattern::Constructor(f, patterns.into())
+            },
+        };
+
+        Ok((p, ctx))
+    });
+
+    cat.trailing.insert(
+        "@ident".to_string(),
+        (100, Assoc::Left, explicit_app.clone()),
+    );
+
+    cat.trailing.insert(
+        "@paren".to_string(),
+        (100, Assoc::Left, explicit_app.clone()),
+    );
+
+    let mut env = ParserEnv {
+        categories: BTreeMap::new(),
+    };
+
+    env.categories.insert("Pattern".into(), cat);
+    env
+}
+
+pub fn parse_fact_like<'a>(
+    ctx: ParserContext<'a>,
+    env: &ParserEnv<Expr>,
+)  -> ParserResult<'a, (FunctionCall, Option<Expr>)> {
+    let (_, ctx) = ctx.next_token()?;
+    let (call, mut ctx)  = ctx.parse(env, "Expr", 0)?;
+    let Expr::FunctionCall(call) = call else {
+        return Err("Only function call can be inserted.".into());
+    };
+
+    let mut result = None;
+
+    if let Some(t) = ctx.peek()
+    && let TokenTree::Token(t) = t
+    && t.text == "->"
+    {
+        (_, ctx) = ctx.next_token()?;
+        let (expr, ctx0) = ctx.parse(env, "Expr", 0)?;
+        ctx = ctx0;
+        result = Some(expr)
+    }
+
+    Ok(((call, result), ctx))
+}
+
+pub fn parse_body<'a>(
+    ctx: ParserContext<'a>,
+    env: &ParserEnv<Expr>,
+) -> ParserResult<'a, Body> {
+    let token = ctx.peek().ok_or("Unexpected EOF")?;
+    let key = match token {
+        TokenTree::Token(token) => token.text,
+        TokenTree::Group { .. } => return Err("Expected command".into()),
+    };
+
+    match key {
+        "union" => {
+            let (_, ctx) = ctx.next_token()?;
+            let (arg0, ctx)  = ctx.parse(env, "Expr", 0)?;
+            let (arg1, ctx)  = ctx.parse(env, "Expr", 0)?;
+
+            Ok((Body::Union(arg0, arg1).into(), ctx))
+        }
+        "insert" => {
+            let ((call, result), ctx) = parse_fact_like(ctx, env)?;
+            Ok((Body::Insert(call, result).into(), ctx))
+        }
+        _ => Err(format!("Unknown bodu: {key}"))
+    }
+}
+
+// rule (pat...), if a = b, leteq c d => body0 ; body1 ; body2
+pub fn parse_rule<'a>(
+    mut ctx: ParserContext<'a>,
+    env: &ParserEnv<Expr>,
+    pat_env: &ParserEnv<Pattern>,
+) -> ParserResult<'a, Rule> {
+    let mut heads = Vec::new();
+    let mut bodies = Vec::new();
+
+    // parse head part
+
+    loop {
+        let token = ctx.peek().ok_or("Unexpected EOF")?;
+        let key = match token {
+            TokenTree::Token(t) => Some(t.text),
+            TokenTree::Group { .. } => None,
+        };
+
+        match key {
+            Some("if") => {
+                (_, ctx) = ctx.next_token()?;
+                let (l, mctx) = ctx.parse(env, "Expr", 0)?;
+                let (t, mctx) = mctx.next_token()?;
+                let (r, mctx) = mctx.parse(env, "Expr", 0)?;
+                
+                let TokenTree::Token(t) = t else {
+                    return Err("Expecting compare operation".into());
+                };
+                
+                let op = match t.text {
+                    "=" => Op::Equ,
+                    _ => todo!()
+                };
+                
+                heads.push(Head::Guard(op, l, r));
+                ctx = mctx;
+            }
+            Some("leteq") => {
+                (_, ctx) = ctx.next_token()?;
+                let (l, mctx) = ctx.parse(env, "Expr", 0)?;
+                let (r, mctx) = mctx.parse(env, "Expr", 0)?;
+                
+                heads.push(Head::LetEq(l, r));
+                ctx = mctx;
+            }
+            _ => {
+                let (p, mctx) = ctx.parse(pat_env, "Pattern", 0)?;
+                heads.push(Head::Pattern(p));
+                ctx = mctx;
+            }
+        }
+
+        let (next, mctx) = ctx.next_token()?;
+        let TokenTree::Token(next) = next else {
+            return Err(format!("Unexpected {next:?}"));
+        };
+
+        ctx = mctx;
+        match next.text {
+            "," => continue,    // thus the next token is for head
+            "=>" => break,      // thus the next token is for body
+            _ => return Err(format!("Unexpected {}", next.text))
+        }
+    }
+
+    // parse body part
+
+    loop {
+        let (body, mctx) = parse_body(ctx, env)?;
+        ctx = mctx;
+        bodies.push(body);
+
+        if let Some(TokenTree::Token(t)) = ctx.peek()
+        && t.text == ";" {
+            (_, ctx) = ctx.next_token()?;
+            continue;
+        } else {
+            break;
+        }
+    }
+        
+    todo!()
+}
+
+pub fn parse_command<'a>(
+    ctx: ParserContext<'a>,
+    env: &ParserEnv<Expr>,
+    pat_env: &ParserEnv<Pattern>,
+) -> ParserResult<'a, Command> {
+    let (token, ctx) = ctx.next_token()?;
+    let key = match token {
+        TokenTree::Token(t) => t.text,
+        TokenTree::Group { .. } => return Err("Expected command".into()),
+    };
+
+    match key {
+        "rule" => {
+            let (rule, ctx) = parse_rule(ctx, env, pat_env)?;
+            Ok((Command::Rule(rule), ctx))
+        }
+        "fact" => {
+            let ((call, result), ctx) = parse_fact_like(ctx, env)?;
+            Ok((Command::Fact(Fact(call, result)), ctx))
+        }
+        "type" => {
+            todo!()
+        }
+        _ => Err(format!("Unknown command: {key}")),
+    }
+}
+
+pub fn parse_commands(line: &str) -> Result<Vec<Command>, String> {
+    let tokens = scan_tokens(line)?;
+    let token_trees = parse_brackets(&tokens).map_err(|err| format!("{err:?}"))?;
+
+    let mut env = build_expr_parser_env();
+    let pat_env = build_pattern_parser_env();
+    let mut ctx = ParserContext(&token_trees[..]);
+    let mut commands: Vec<Command> = vec![];
+    while let Some(_) = ctx.peek() {
+        let (r, rest) = parse_command(ctx, &mut env, &pat_env)?;
+        ctx = rest;
+        commands.push(r);
+    }
+
+    if ctx.peek().is_some() {
+        Err(format!("{ctx:?} not a command."))
+    } else {
+        Ok(commands)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    pub fn test_parse0() {
+        let code = r"
+fact path 1 2
+fact path 2 3
+fact path 3 4
+        ";
+    }
+}

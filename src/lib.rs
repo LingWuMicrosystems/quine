@@ -12,3 +12,4 @@ pub mod frontend;
 pub mod syntax;
 pub mod types;
 pub mod uf;
+pub mod min_parser;
