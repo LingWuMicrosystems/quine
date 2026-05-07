@@ -1,15 +1,11 @@
 use alloc::{boxed::Box, string::String};
 
-use crate::{
-    common::{Name, Variable},
-    context::{FunctionType, RelationType},
-    rule::Op,
-};
+use crate::{common::Name, rule::Op, types::TypeDef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReplCommand {
     TypeDef(Name, TypeDef),
-    Rule(Name, Rule),
+    Rule(Rule),
     Fact(Fact),
     Query(Rule),
 }
@@ -19,12 +15,6 @@ pub enum Command {
     TypeDef(Name, TypeDef),
     Rule(Rule),
     Fact(Fact),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TypeDef {
-    Relation(RelationType),
-    Function(FunctionType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -65,7 +55,7 @@ pub struct FunctionCall(pub Function, pub Box<[Expr]>);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AtomOrVariable {
     Atom(Atom),
-    Variable(Variable),
+    Variable(VarName),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -78,9 +68,8 @@ pub enum Atom {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Body {
-    Insert(FunctionCall),
+    Insert(FunctionCall, Option<Expr>),
     Union(Expr, Expr),
-    Let(VarName, Expr),
 }
 
 pub type Function = Name;
