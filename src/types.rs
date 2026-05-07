@@ -5,6 +5,12 @@ use crate::common::Name;
 // high level types
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypeDef {
+    Relation(RelationType),
+    Function(FunctionType),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RelationType(pub Name, Box<[Type]>);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionType(pub Name, Box<[Type]>, Box<Type>);
