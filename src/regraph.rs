@@ -95,6 +95,9 @@ impl RelatedEGraph {
         let rest = &var_cols[1..];
 
         for cols in rest {
+            if rows.is_empty() {
+                return Set::default();
+            }
             rows = rows
                 .iter()
                 .flat_map(|row| {
