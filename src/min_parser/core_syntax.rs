@@ -6,6 +6,8 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
+use crate::common::Atom;
+use crate::core::rule::Op;
 use crate::min_parser::parser::category::{
     Assoc, Category, ParserContext, ParserEnv, ParserFn, ParserResult, TrailingParserFn, parse_inside_group
 };
@@ -15,8 +17,42 @@ use crate::min_parser::tokenize::token::TokenKind;
 use crate::min_parser::tokenize::{
     token_tree::{GroupKind, TokenTree},
 };
-use crate::rule::Op;
-use crate::syntax::{Atom, AtomOrVariable, Body, Command, Expr, Fact, FunctionCall, Head, Pattern, Rule};
+use crate::syntax::{AtomOrVariable, Body, Command, Expr, FunctionCall, Head, Pattern, Rule};
+use crate::types::{BaseType, SumType, Type, TypeConstructor, TypeDef};
+
+
+// Maybe pest, our `min_parser` is hard to do mutual recursion.
+// kws = _{ "if" | "leteq" | "union" | "insert" | "true" | "false" | "rule" | "fact" }
+// WHITESPACE = _{ " " }
+// ident_start = _{ 'a'..'z' | 'A'..'Z' }
+// ident_continue = _{ 'a'..'z' | 'A'..'Z' | "_" | '0'..'9' }
+//
+// ident = @{ !kws ~ ident_start ~ ident_continue* }
+//
+// digit = _{ '0'..'9' }
+// digits = @{ digit+ }
+// atom = { "true" | "false" | "-"? ~ digits | ident }
+// atom_expr = { atom | "(" ~ expr ~ ")" }
+// expr = { atom_expr ~ expr* }
+// 
+// atom_pattern = { atom | "(" ~ pattern ~ ")" | "_" }
+// pattern = { atom_pattern ~ pattern* }
+//
+// op = { "=" | ">" | "<" }
+// head = {
+//     | pattern
+//     | "leteq" ~ atom_expr ~ atom_expr
+//     | "if" ~ expr ~ op ~ expr
+// }
+// heads = { head ~ ("," ~ head)* }
+//
+// body = {
+//   | "union" ~ atom_expr ~ atom_expr
+//   | "insert" ~ atom_expr
+// }
+// bodies = { body ~ (";" ~ body)* }
+//
+// rule = { "rule" ~ heads ~ "=>" ~ bodies }
 
 fn make_app<'a>(func: Expr, arg: Expr) -> Result<Expr, String> {
     match func {
@@ -49,7 +85,11 @@ fn initialize_category<T>() -> Category<T> {
     c
 }
 
-const KEYWORDS: [ &str; 8 ] = [ "if", "leteq", "union", "insert", "rule", "fact", "true", "false" ];
+const KEYWORDS: [ &str; 22 ] = [ 
+    "if", "leteq", "union", "insert", "rule", "fact", "type",
+    "true", "false",
+    "ID", "i1", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "str",
+];
 
 const ATOM_LEADINGS: [ &str; 6 ] = [ "@ident", "-", "@int", "@str", "true", "false" ];
 pub fn build_atom_parser_env<'a>() -> ParserEnv<AtomOrVariable> {
@@ -130,6 +170,77 @@ pub fn build_atom_parser_env<'a>() -> ParserEnv<AtomOrVariable> {
 
     env.categories.insert("Atom".to_string(), cat);
     env
+}
+
+const BASE_TYPE_LEADING: [ &str ; 13 ] = [ "ID", "i1", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "str" ];
+pub fn parse_base_type<'a>(ctx: ParserContext<'a>) -> ParserResult<'a, BaseType> {
+    let (TokenTree::Token(t), ctx) = ctx.next_token()? else {
+        return Err(format!("Expecting Type"));
+    };
+
+    let ty = match t.text {
+        "ID" => BaseType::Id,
+        "i1" => BaseType::I1,
+        "i8" => BaseType::I8,
+        "i16" => BaseType::I16,
+        "i32" => BaseType::I32,
+        "i64" => BaseType::I64,
+        "u8" => BaseType::U8,
+        "u16" => BaseType::U16,
+        "u32" => BaseType::U32,
+        "u64" => BaseType::U64,
+        "f32" => BaseType::F32,
+        "f64" => BaseType::F64,
+        "str" => BaseType::Str,
+        _ => return Err(format!("Unknown type: {}", t.text))
+    };
+
+    Ok((ty, ctx))
+}
+
+pub fn parse_type<'a>(ctx: ParserContext<'a>) -> ParserResult<'a, Type> {
+    let TokenTree::Token(t) = ctx.peek().ok_or("Unexpected EOF")? else {
+        return Err("Expecting type".into());
+    };
+
+    if BASE_TYPE_LEADING.contains(&t.text) {
+        let (ty, ctx) = parse_base_type(ctx)?;
+        Ok((Type::Base(ty), ctx))
+    } else {
+        let (name, ctx) = ctx.expect_ident()?;
+        Ok((Type::Name(name), ctx))
+    }
+}
+
+pub fn parse_type_list<'a>(ctx: ParserContext<'a>) -> ParserResult<'a, Box<[Type]>> {
+    let mut types = Vec::new();
+
+    let (ty, mut ctx) = parse_type(ctx)?;
+    types.push(ty);
+
+    while let Some(TokenTree::Token(t)) = ctx.peek()
+    && t.text == "," {
+        (_, ctx) = ctx.next_token()?;
+        let (ty, mctx) = parse_type(ctx)?;
+        ctx = mctx;
+        types.push(ty);
+    }
+
+    Ok((types.into(), ctx))
+}
+
+// foo(A, B)
+pub fn parse_type_constructor<'a>(ctx: ParserContext<'a>) -> ParserResult<'a, TypeConstructor> {
+    let (name, ctx) = ctx.expect_ident()?;
+    let (param_list, ctx) = ctx.next_token()?;
+    let types= parse_inside_group(param_list, GroupKind::Paren, |ctx|{ 
+        if ctx.peek().is_none() {
+            Ok(([].into(), ctx))
+        } else {
+            parse_type_list(ctx)
+        }
+    })?;
+    Ok((TypeConstructor(name, types), ctx))
 }
 
 const EXPR_LEADING: [ &str; 7 ] = [ "@ident", "-", "@int", "@str", "true", "false", "@paren" ];
@@ -244,7 +355,7 @@ pub fn build_pattern_parser_env(atom: Rc<ParserEnv<AtomOrVariable>>) -> ParserEn
     env
 }
 
-pub fn parse_fact_like<'a>(
+pub fn parse_insert_like<'a>(
     ctx: ParserContext<'a>,
     env: &ParserEnv<Expr>,
 )  -> ParserResult<'a, (FunctionCall, Option<Expr>)> {
@@ -289,7 +400,7 @@ pub fn parse_body<'a>(
         }
         "insert" => {
             let (_, ctx) = ctx.next_token()?;
-            let ((call, result), ctx) = parse_fact_like(ctx, env)?;
+            let ((call, result), ctx) = parse_insert_like(ctx, env)?;
             Ok((Body::Insert(call, result).into(), ctx))
         }
         _ => Err(format!("Unknown body: {key}"))
@@ -386,7 +497,7 @@ pub fn parse_rule<'a>(
 
 pub fn parse_command<'a>(
     ctx: ParserContext<'a>,
-    env: &ParserEnv<Expr>,
+    expr_env: &ParserEnv<Expr>,
     pat_env: &ParserEnv<Pattern>,
 ) -> ParserResult<'a, Command> {
     let (token, ctx) = ctx.next_token()?;
@@ -397,15 +508,30 @@ pub fn parse_command<'a>(
 
     match key {
         "rule" => {
-            let (rule, ctx) = parse_rule(ctx, env, pat_env)?;
+            let (rule, ctx) = parse_rule(ctx, expr_env, pat_env)?;
             Ok((Command::Rule(rule), ctx))
         }
         "fact" => {
-            let ((call, result), ctx) = parse_fact_like(ctx, env)?;
-            Ok((Command::Fact(Fact(call, result)), ctx))
+            let (expr, ctx) = ctx.parse(expr_env, "Expr", 0)?;
+            let fact = expr.try_into()?;
+            Ok((Command::Fact(fact), ctx))
         }
         "type" => {
-            todo!()
+            let (name, mut ctx) = ctx.expect_ident()?;
+            let mut cons = Vec::new();
+            
+            while let Some(TokenTree::Token(t)) = ctx.peek()
+            && t.text == "|" {
+                (_, ctx) = ctx.next_token()?;
+                let (con, mctx) = parse_type_constructor(ctx)?;
+                cons.push(con);
+                ctx = mctx;
+            }
+
+            let def = TypeDef(name.clone(), SumType(cons.into()));
+            let def = Command::TypeDef(name, def);
+
+            Ok((def, ctx))
         }
         _ => Err(format!("Unknown command: {key}")),
     }
@@ -416,12 +542,12 @@ pub fn parse_commands(line: &str) -> Result<Vec<Command>, String> {
     let token_trees = parse_brackets(&tokens).map_err(|err| format!("{err:?}"))?;
 
     let atom_env = Rc::new(build_atom_parser_env());
-    let mut env = build_expr_parser_env(atom_env.clone());
+    let expr_env = build_expr_parser_env(atom_env.clone());
     let pat_env = build_pattern_parser_env(atom_env);
     let mut ctx = ParserContext(&token_trees[..]);
     let mut commands: Vec<Command> = vec![];
     while let Some(_) = ctx.peek() {
-        let (r, rest) = parse_command(ctx, &mut env, &pat_env)?;
+        let (r, rest) = parse_command(ctx, &expr_env, &pat_env)?;
         ctx = rest;
         commands.push(r);
     }
@@ -452,18 +578,26 @@ mod tests {
     pub fn test_parse0() {
         let code = r"
 fact path 1 2
+fact 5
 fact path 2 3
 fact path 3 4
 rule path a b, path c d, if b = c => union (path a b) <- (path c d)
 rule path _ (path a 1) => union path a a <- path a a
-        ";
+type Nat
+| zro()
+| suc(Nat)";
 
         assert_commands(code, &[
             "fact path 1u 2u",
+            "fact 5u",
             "fact path 2u 3u",
             "fact path 3u 4u",
             "rule path a b, path c d, if b = c => union (path a b) <- (path c d)",
             "rule path _ (path a 1u) => union (path a a) <- (path a a)",
+            r"type Nat
+| zro()
+| suc(Nat)
+",
         ]);
     }
 }

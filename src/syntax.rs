@@ -4,7 +4,7 @@ use alloc::{boxed::Box, string::String};
 
 use crate::{
     common::{Atom, Name, Set, TableName, TypeName},
-    types::{TableDef, TypeDef},
+    types::{TableDef, Type, TypeConstructor, TypeDef},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -193,6 +193,39 @@ impl Expr {
     }
 }
 
+impl TryFrom<Expr> for Fact {
+    type Error = String;
+
+    fn try_from(value: Expr) -> Result<Self, Self::Error> {
+        match value {
+            Expr::AtomOrVariable(AtomOrVariable::Atom(atom)) => Ok(Fact::Atom(atom)),
+            Expr::AtomOrVariable(AtomOrVariable::Variable(_)) => Err("Fact cannot contains variable".into()),
+            Expr::FunctionCall(FunctionCall(name, args)) => {
+                let args = args.into_iter()
+                    .map(Fact::try_from)
+                    .collect::<Result<Box<[_]>, _>>()?;
+
+                Ok(Fact::FactConstructor(FactConstructor(name, args)))
+            },
+        }
+    }
+}
+
+impl Into<Expr> for &Fact {
+    fn into(self) -> Expr {
+        match self {
+            Fact::Atom(atom) => Expr::AtomOrVariable(AtomOrVariable::Atom(atom.clone())),
+            Fact::FactConstructor(FactConstructor(name, args)) => {
+                let args = args.iter()
+                    .map(|x| x.into())
+                    .collect::<Box<[Expr]>>();
+
+                Expr::FunctionCall(FunctionCall(name.clone(), args))
+            },
+        }
+    }
+}
+
 impl Display for FunctionCall {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.fmt_internal(f, false)
@@ -223,6 +256,7 @@ impl Display for Body {
                 write!(f, " <- ")?;
                 r.fmt_internal(f, true)
             },
+            Body::Let(function_call) => todo!(),
         }
     }
 }
@@ -268,10 +302,6 @@ impl Display for Op {
             Op::Gt => ">",
             Op::Leq => "<=",
             Op::Geq => ">=",
-            Op::Ltu => todo!(),  // ?
-            Op::Gtu => todo!(),
-            Op::Lequ => todo!(),
-            Op::Gequ => todo!(),
         };
 
         write!(f, "{}", display)
@@ -298,10 +328,45 @@ impl Display for Head {
     }
 }
 
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Base(bt) => write!(f, "{bt:?}"),
+            Type::Name(name) => write!(f, "{name}"),
+        }
+    }
+}
+
+impl Display for TypeConstructor {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}(", self.0)?;
+        for (idx, t) in self.1.iter().enumerate() {
+            if idx != 0 {
+                write!(f, ", ")?;
+            }
+
+            write!(f, "{t}")?;
+        }
+
+        write!(f, ")")
+    }
+}
+
+impl Display for TypeDef {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        writeln!(f, "type {}", self.0);
+        for con in &self.1.0 {
+            writeln!(f, "| {con}")?;
+        }
+
+        Ok(())
+    }
+}
+
 impl Display for Command {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Command::TypeDef(_, type_def) => todo!(),
+            Command::TypeDef(_, def) => write!(f, "{def}"),
             Command::Rule(Rule { heads, bodys }) => {
                 write!(f, "rule ")?;
                 for (idx, head) in heads.iter().enumerate() {
@@ -324,15 +389,12 @@ impl Display for Command {
 
                 Ok(())
             },
-            Command::Fact(Fact(call, expr)) => {
-                write!(f, "fact {call}")?;
-
-                if let Some(expr) = expr {
-                    write!(f, " -> {expr}")?;
-                }
-
-                Ok(())
+            Command::Fact(fact) => {
+                let expr: Expr = fact.into();
+                write!(f, "fact {expr}")
             },
+            Command::TableDef(_, table_def) => todo!(),
+            Command::Query(heads) => todo!(),
         }
     }
 }
