@@ -4,7 +4,7 @@ use smallvec::{SmallVec, ToSmallVec};
 
 use crate::{
     common::{ColumnIndex, Id, Map, RowIndex, Set},
-    rule::{Constraint, Op},
+    core::rule::{Constraint, Op},
     uf::UnionFind,
 };
 

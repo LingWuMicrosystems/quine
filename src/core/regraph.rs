@@ -5,8 +5,8 @@ use smallvec::{SmallVec, ToSmallVec, smallvec};
 
 use crate::{
     common::{ColumnIndex, Id, RowIndex, Set},
-    rule::{Action, Constraint, CrossConstraint, FusedScan, Op, Rule, VarColsScanRule},
-    table::{Row, Table},
+    core::rule::{Action, Constraint, CrossConstraint, FusedScan, Op, Rule, VarColsScanRule},
+    core::table::{Row, Table},
     uf::UnionFind,
 };
 

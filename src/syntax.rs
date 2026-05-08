@@ -1,24 +1,29 @@
 use alloc::{boxed::Box, string::String};
 
-use crate::{common::Name, rule::Op, types::TypeDef};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ReplCommand {
-    TypeDef(Name, TypeDef),
-    Rule(Rule),
-    Fact(Fact),
-    Query(Rule),
-}
+use crate::{
+    common::{Atom, Name},
+    core::rule::Op,
+    types::{TableDef, TypeDef},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Command {
     TypeDef(Name, TypeDef),
+    TableDef(Name, TableDef),
     Rule(Rule),
     Fact(Fact),
+    // repl only
+    Query(Heads),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Fact(pub FunctionCall, pub Option<Expr>);
+pub struct FactConstructor(pub Name, Box<[Fact]>);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Fact {
+    Atom(Atom),
+    FactConstructor(FactConstructor),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Rule {
@@ -59,15 +64,8 @@ pub enum AtomOrVariable {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Atom {
-    Int(i64),
-    Uint(u64),
-    Bool(bool),
-    Str(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Body {
+    Let(FunctionCall),
     Insert(FunctionCall, Option<Expr>),
     Union(Expr, Expr),
 }
