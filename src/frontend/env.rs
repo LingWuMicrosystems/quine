@@ -2,7 +2,7 @@ use alloc::{format, vec::Vec};
 
 use crate::{
     common::{ConstructorName, Map, TableName, TypeName},
-    error::TypeCheckError,
+    frontend::error::TypeCheckError,
     types::{TableDef, TypeDef},
 };
 
