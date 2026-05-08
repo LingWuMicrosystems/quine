@@ -1,20 +1,21 @@
-use alloc::{format, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 
 use crate::{
-    common::{Map, Name},
+    common::{Atom, TableName},
     core::{command::BackendCommand, rule},
+    env::{DataTypeEnv, TableEnv},
     error::TypeCheckError,
-    syntax::Command,
-    types::{TableDef, Type, TypeDef},
+    syntax::{Command, Op, VarName},
+    types::{TableDef, Type},
 };
 
 #[derive(Debug, Default, Clone)]
-pub struct Env {
+pub struct CompileEnv {
     pub data_types: DataTypeEnv,
     pub table_types: TableEnv,
 }
 
-impl Env {
+impl CompileEnv {
     pub fn check_and_compile(
         &mut self,
         command: Command,
@@ -47,51 +48,15 @@ impl Env {
         &mut self,
         rule: &crate::syntax::Rule,
     ) -> Result<rule::Rule, TypeCheckError> {
+        // let mut variables = vec![];
         todo!()
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct TableEnv {
-    pub tables: Vec<TableDef>,
-    pub name_map: Map<Name, usize>,
-}
-
-impl TableEnv {
-    pub fn insert(&mut self, name: Name, def: TableDef) -> Result<(), TypeCheckError> {
-        let offset = self.tables.len();
-        if self.name_map.contains_key(&name) {
-            return Err(TypeCheckError::DuplicateName(name));
-        }
-        self.tables.push(def.clone());
-        self.name_map.insert(name, offset);
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct DataTypeEnv {
-    pub type_list: Vec<TypeDef>,
-    pub name2type_map: Map<Name, usize>,
-    // pub type2name_map: Map<TypeDef, usize>,
-    // constructor name
-    pub cons2type_map: Map<Name, usize>,
-}
-
-impl DataTypeEnv {
-    pub fn insert(&mut self, name: Name, type_def: TypeDef) -> Result<(), TypeCheckError> {
-        if self.name2type_map.contains_key(&name) {
-            return Err(TypeCheckError::DuplicateName(name));
-        }
-        let offset = self.type_list.len();
-        self.type_list.push(type_def.clone());
-
-        for cons in type_def.1.0 {
-            self.cons2type_map
-                .insert(format!("{}.{}", type_def.0, cons.0.clone()), offset);
-        }
-        self.name2type_map.insert(name, offset);
-        // self.type2name_map.insert(type_def, offset);
-        Ok(())
-    }
+#[derive(Debug, Clone)]
+pub enum FlatClause {
+    Lookup(VarName, TableName, Vec<VarName>),
+    Eq(VarName, VarName),
+    Constraint(VarName, Op, Atom),
+    Guard(VarName, Op, VarName),
 }

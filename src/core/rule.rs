@@ -2,9 +2,9 @@ use alloc::boxed::Box;
 use smallvec::SmallVec;
 
 use crate::{
-    common::{ColumnIndex, Id, Variable},
-    core::regraph::TableId,
-    core::table::Row,
+    common::{ColumnIndex, Id, Map, Name, Variable},
+    core::{regraph::TableId, table::Row},
+    types::Type,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -39,10 +39,15 @@ pub type VarColsScanRule = Box<[FusedScan]>;
 
 #[derive(Debug, Clone)]
 pub struct Rule {
-    pub head_var_order: SmallVec<[Variable; 4]>,
+    pub head_var_order: Box<[(Variable, Type)]>,
+    pub head_var_map: Map<Name, Variable>,
+
     pub var_cols: Box<[VarColsScanRule]>,
     pub constraints: SmallVec<[CrossConstraint; 2]>,
-    pub body_var_order: SmallVec<[Variable; 4]>,
+
+    pub body_var_order: Box<[(Variable, Type)]>,
+    pub body_var_map: Map<Name, Variable>,
+
     pub actions: SmallVec<[Action; 2]>,
 }
 
