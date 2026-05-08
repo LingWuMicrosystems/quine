@@ -3,6 +3,9 @@
 
 extern crate alloc;
 
+#[cfg(test)]
+extern crate std;
+
 pub mod check_and_compile;
 pub mod common;
 pub mod core;

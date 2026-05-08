@@ -220,7 +220,7 @@ impl Display for Body {
             Body::Union(l, r) => {
                 write!(f, "union ")?;
                 l.fmt_internal(f, true)?;
-                write!(f, " ")?;
+                write!(f, " <- ")?;
                 r.fmt_internal(f, true)
             },
         }
@@ -259,6 +259,25 @@ impl Display for Pattern {
     }
 }
 
+impl Display for Op {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let display = match self {
+            Op::Equ => "=",
+            Op::Neq => "!=",
+            Op::Lt => "<",
+            Op::Gt => ">",
+            Op::Leq => "<=",
+            Op::Geq => ">=",
+            Op::Ltu => todo!(),  // ?
+            Op::Gtu => todo!(),
+            Op::Lequ => todo!(),
+            Op::Gequ => todo!(),
+        };
+
+        write!(f, "{}", display)
+    }
+}
+
 impl Display for Head {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -266,14 +285,53 @@ impl Display for Head {
             Head::LetEq(l, r) => {
                 write!(f, "leteq ")?;
                 l.fmt_internal(f, true)?;
-                write!(f, " ")?;
+                write!(f, " <- ")?;
                 r.fmt_internal(f, true)
             },
             Head::Guard(op, l, r) => {
                 write!(f, "if ")?;
                 l.fmt_internal(f, true)?;
-                write!(f, "{op:?}")?;
+                write!(f, " {op} ")?;
                 r.fmt_internal(f, true)
+            },
+        }
+    }
+}
+
+impl Display for Command {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Command::TypeDef(_, type_def) => todo!(),
+            Command::Rule(Rule { heads, bodys }) => {
+                write!(f, "rule ")?;
+                for (idx, head) in heads.iter().enumerate() {
+                    if idx != 0 {
+                        write!(f, ", ")?;
+                    }
+
+                    write!(f, "{head}")?;
+                }
+
+                write!(f, " => ")?;
+
+                for (idx, body) in bodys.iter().enumerate() {
+                    if idx != 0 {
+                        write!(f, " ; ")?;
+                    }
+
+                    write!(f, "{body}")?;
+                }
+
+                Ok(())
+            },
+            Command::Fact(Fact(call, expr)) => {
+                write!(f, "fact {call}")?;
+
+                if let Some(expr) = expr {
+                    write!(f, " -> {expr}")?;
+                }
+
+                Ok(())
             },
         }
     }

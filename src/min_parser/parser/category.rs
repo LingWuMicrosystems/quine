@@ -65,7 +65,7 @@ impl<'a> ParserContext<'a> {
             .get(category_name)
             .ok_or_else(|| format!("Category '{category_name}' not found"))?;
 
-        let token = self.peek().ok_or("Unexpected end of input")?;
+        let token = self.peek().ok_or("Unexpected end of input").unwrap();
         let key = get_lookup_key(env, token);
 
         let leading_parser = category
