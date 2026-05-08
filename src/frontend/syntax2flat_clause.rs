@@ -25,11 +25,25 @@ pub fn syntax_rule2flat_clause(rule: &syntax::Rule) -> Result<rule::Rule, TypeCh
         match head {
             Head::Match(pattern) => {
                 let (new_counter, _) =
-                    function_call2flat_clause(&pattern, &mut clauses, &mut variables, counter);
+                    function_call2flat_clause(&pattern, &mut variables, &mut clauses, counter);
                 counter = new_counter;
             }
-            Head::LetEq(expr, expr1) => todo!(),
-            Head::Guard(op, expr, expr1) => todo!(),
+            Head::LetEq(expr, expr1) => {
+                let (new_counter, expr) =
+                    expr2flat_clause(expr, &mut clauses, &mut variables, counter);
+                let (new_counter, expr1) =
+                    expr2flat_clause(expr1, &mut clauses, &mut variables, new_counter);
+                clauses.push(FlatClause::Eq(expr, expr1));
+                counter = new_counter;
+            }
+            Head::Guard(op, expr, expr1) => {
+                let (new_counter, expr) =
+                    expr2flat_clause(expr, &mut clauses, &mut variables, counter);
+                let (new_counter, expr1) =
+                    expr2flat_clause(expr1, &mut clauses, &mut variables, new_counter);
+                clauses.push(FlatClause::Guard(*op, expr, expr1));
+                counter = new_counter;
+            }
         }
     }
     todo!()
@@ -49,20 +63,18 @@ pub fn function_call2flat_clause(
     vars: &mut Vec<VarName>,
     clauses: &mut Vec<FlatClause<VarName>>,
     mut counter: AnonymousVarCounter,
-) -> (AnonymousVarCounter, Option<VarName>) {
+) -> (AnonymousVarCounter, VarName) {
     for i in 0..call.1.len() {
         let (new_counter, var) = expr2flat_clause(&call.1[i], clauses, vars, counter);
-        if let Some(var) = var {
-            clauses.push(FlatClause::Lookup(
-                var,
-                TableName(call.0.clone()),
-                ColumnIndex(i),
-            ));
-            counter = new_counter;
-        }
+        clauses.push(FlatClause::Lookup(
+            var,
+            TableName(call.0.clone()),
+            ColumnIndex(i),
+        ));
+        counter = new_counter;
     }
     let out = format!("t_{}", counter.0);
-    (counter.next(), Some(out))
+    (counter.next(), out)
 }
 
 pub fn expr2flat_clause(
@@ -70,14 +82,14 @@ pub fn expr2flat_clause(
     clauses: &mut Vec<FlatClause<VarName>>,
     vars: &mut Vec<VarName>,
     counter: AnonymousVarCounter,
-) -> (AnonymousVarCounter, Option<VarName>) {
+) -> (AnonymousVarCounter, VarName) {
     match expr {
         Expr::AtomOrVariable(AtomOrVariable::Atom(a)) => {
             let name = format!("t_{}", counter.0);
             clauses.push(FlatClause::ConstCompare(Op::Equ, name.clone(), a.clone()));
-            (counter.next(), Some(name))
+            (counter.next(), name)
         }
-        Expr::AtomOrVariable(AtomOrVariable::Variable(v)) => (counter, Some(v.clone())),
+        Expr::AtomOrVariable(AtomOrVariable::Variable(v)) => (counter, v.clone()),
         Expr::FunctionCall(call) => function_call2flat_clause(&call, vars, clauses, counter),
     }
 }
