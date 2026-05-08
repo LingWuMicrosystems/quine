@@ -18,7 +18,7 @@ use crate::min_parser::tokenize::{
     token_tree::{GroupKind, TokenTree},
 };
 use crate::syntax::{AtomOrVariable, Body, Command, Expr, FunctionCall, Head, Pattern, Rule};
-use crate::types::{BaseType, SumType, Type, TypeConstructor, TypeDef};
+use crate::types::{BaseType, SumType, TableDef, Type, TypeConstructor, TypeDef};
 
 
 // Maybe pest, our `min_parser` is hard to do mutual recursion.
@@ -85,8 +85,8 @@ fn initialize_category<T>() -> Category<T> {
     c
 }
 
-const KEYWORDS: [ &str; 22 ] = [ 
-    "if", "leteq", "union", "insert", "rule", "fact", "type",
+const KEYWORDS: [ &str; 24 ] = [ 
+    "if", "leteq", "union", "insert", "rule", "fact", "type", "table", "query",
     "true", "false",
     "ID", "i1", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "str",
 ];
@@ -386,7 +386,7 @@ pub fn parse_body<'a>(
     let token = ctx.peek().ok_or("Unexpected EOF")?;
     let key = match token {
         TokenTree::Token(token) => token.text,
-        TokenTree::Group { .. } => return Err("Expected command".into()),
+        TokenTree::Group { .. } => return Err("Expecting body".into()),
     };
 
     match key {
@@ -407,16 +407,12 @@ pub fn parse_body<'a>(
     }
 }
 
-// rule (pat...), if a = b, leteq c d => body0 ; body1 ; body2
-pub fn parse_rule<'a>(
+pub fn parse_heads<'a>(
     mut ctx: ParserContext<'a>,
-    env: &ParserEnv<Expr>,
+    expr_env: &ParserEnv<Expr>,
     pat_env: &ParserEnv<Pattern>,
-) -> ParserResult<'a, Rule> {
+) -> ParserResult<'a, Box<[Head]>> {
     let mut heads = Vec::new();
-    let mut bodies = Vec::new();
-
-    // parse head part
 
     loop {
         let token = ctx.peek().ok_or("Unexpected EOF")?;
@@ -428,9 +424,9 @@ pub fn parse_rule<'a>(
         match key {
             Some("if") => {
                 (_, ctx) = ctx.next_token()?;
-                let (l, mctx) = ctx.parse(env, "Expr", 0)?;
+                let (l, mctx) = ctx.parse(expr_env, "Expr", 0)?;
                 let (t, mctx) = mctx.next_token()?;
-                let (r, mctx) = mctx.parse(env, "Expr", 0)?;
+                let (r, mctx) = mctx.parse(expr_env, "Expr", 0)?;
                 
                 let TokenTree::Token(t) = t else {
                     return Err("Expecting compare operation".into());
@@ -446,9 +442,9 @@ pub fn parse_rule<'a>(
             }
             Some("leteq") => {
                 (_, ctx) = ctx.next_token()?;
-                let (l, mctx) = ctx.parse(env, "Expr", 0)?;
+                let (l, mctx) = ctx.parse(expr_env, "Expr", 0)?;
                 let (_, mctx) = mctx.expect("<-")?;
-                let (r, mctx) = mctx.parse(env, "Expr", 0)?;
+                let (r, mctx) = mctx.parse(expr_env, "Expr", 0)?;
                 
                 heads.push(Head::LetEq(l, r));
                 ctx = mctx;
@@ -460,17 +456,35 @@ pub fn parse_rule<'a>(
             }
         }
 
-        let (next, mctx) = ctx.next_token()?;
-        let TokenTree::Token(next) = next else {
-            return Err(format!("Unexpected {next:?}"));
-        };
-
-        ctx = mctx;
-        match next.text {
-            "," => continue,    // thus the next token is for head
-            "=>" => break,      // thus the next token is for body
-            _ => return Err(format!("Unexpected {}", next.text))
+        if let Some(TokenTree::Token(t)) = ctx.peek()
+        && t.text == "," {
+            (_, ctx) = ctx.next_token()?;
+            continue;
+        } else {
+            break;
         }
+    }
+
+    // after loop, `ctx` points to the next token after the last `Head`
+
+    Ok((heads.into(), ctx))
+}
+
+// rule (pat...), if a = b, leteq c d => body0 ; body1 ; body2
+pub fn parse_rule<'a>(
+    ctx: ParserContext<'a>,
+    env: &ParserEnv<Expr>,
+    pat_env: &ParserEnv<Pattern>,
+) -> ParserResult<'a, Rule> {
+    let mut bodies = Vec::new();
+
+    // parse head part
+    let (heads, ctx) = parse_heads(ctx, env, pat_env)?;
+    let (token, mut ctx) = ctx.next_token()?;
+    if let TokenTree::Token(t) = token && t.text == "=>" {
+        // do nothing
+    } else {
+        return Err("Expecting rule body".into());
     }
 
     // parse body part
@@ -503,7 +517,7 @@ pub fn parse_command<'a>(
     let (token, ctx) = ctx.next_token()?;
     let key = match token {
         TokenTree::Token(t) => t.text,
-        TokenTree::Group { .. } => return Err("Expected command".into()),
+        TokenTree::Group { .. } => return Err("Expecting command".into()),
     };
 
     match key {
@@ -532,6 +546,24 @@ pub fn parse_command<'a>(
             let def = Command::TypeDef(name, def);
 
             Ok((def, ctx))
+        }
+        "table" => {
+            let (TypeConstructor(name, params), ctx) = parse_type_constructor(ctx)?;
+            let (ret, ctx) = if let Some(TokenTree::Token(t)) = ctx.peek()
+            && t.text == "->" {
+                let (_, ctx) = ctx.next_token()?;
+                let (ty, ctx) = parse_type(ctx)?;
+                (Some(ty), ctx)
+            } else {
+                (None, ctx)
+            };
+
+            let def = TableDef(name.clone(), params, ret);
+            Ok((Command::TableDef(name, def), ctx))
+        }
+        "query" => {
+            let (heads, ctx) = parse_heads(ctx, expr_env, pat_env)?;
+            Ok((Command::Query(heads), ctx))
         }
         _ => Err(format!("Unknown command: {key}")),
     }
@@ -585,7 +617,11 @@ rule path a b, path c d, if b = c => union (path a b) <- (path c d)
 rule path _ (path a 1) => union path a a <- path a a
 type Nat
 | zro()
-| suc(Nat)";
+| suc(Nat)
+table plus(Nat, Nat) -> Nat
+table relation(Nat, Nat)
+query path 1 4
+query path a b, if a = b";
 
         assert_commands(code, &[
             "fact path 1u 2u",
@@ -598,6 +634,10 @@ type Nat
 | zro()
 | suc(Nat)
 ",
+            "table plus(Nat, Nat) -> Nat",
+            "table relation(Nat, Nat)",
+            "query path 1u 4u",
+            "query path a b, if a = b",
         ]);
     }
 }

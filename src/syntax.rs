@@ -4,7 +4,7 @@ use alloc::{boxed::Box, string::String};
 
 use crate::{
     common::{Atom, Name, Set, TableName, TypeName},
-    types::{TableDef, Type, TypeConstructor, TypeDef},
+    types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -328,8 +328,30 @@ impl Display for Head {
     }
 }
 
+impl Display for BaseType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let s = match self {
+            BaseType::Id => "ID",
+            BaseType::I1 => "i1",
+            BaseType::I8 => "i8",
+            BaseType::U8 => "u8",
+            BaseType::I16 => "i16",
+            BaseType::U16 => "u16",
+            BaseType::I32 => "i32",
+            BaseType::U32 => "u32",
+            BaseType::F32 => "f32",
+            BaseType::I64 => "i64",
+            BaseType::U64 => "u64",
+            BaseType::F64 => "f64",
+            BaseType::Str => "str",
+        };
+
+        write!(f, "{s}")
+    }
+}
+
 impl Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Type::Base(bt) => write!(f, "{bt:?}"),
             Type::Name(name) => write!(f, "{name}"),
@@ -357,6 +379,17 @@ impl Display for TypeDef {
         writeln!(f, "type {}", self.0);
         for con in &self.1.0 {
             writeln!(f, "| {con}")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Display for TableDef {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "table {}", TypeConstructor(self.0.clone(), self.1.clone()))?;
+        if let Some(ret) = &self.2 {
+            write!(f, " -> {ret}")?;
         }
 
         Ok(())
@@ -393,8 +426,19 @@ impl Display for Command {
                 let expr: Expr = fact.into();
                 write!(f, "fact {expr}")
             },
-            Command::TableDef(_, table_def) => todo!(),
-            Command::Query(heads) => todo!(),
+            Command::TableDef(_, def) => write!(f, "{def}"),
+            Command::Query(heads) => {
+                write!(f, "query ")?;
+                for (idx, head) in heads.iter().enumerate() {
+                    if idx != 0 {
+                        write!(f, ", ")?;
+                    }
+
+                    write!(f, "{head}")?;
+                }
+
+                Ok(())
+            },
         }
     }
 }
