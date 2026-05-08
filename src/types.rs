@@ -5,28 +5,32 @@ use crate::common::Name;
 // high level types
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TypeDef {
-    Relation(RelationType),
-    Function(FunctionType),
-}
+pub struct TypeDef(pub Name, pub SumType);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RelationType(pub Name, Box<[Type]>);
+pub struct SumType(pub Box<[TypeConstructor]>);
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FunctionType(pub Name, Box<[Type]>, Box<Type>);
+pub struct TypeConstructor(pub Name, pub Box<[Type]>);
+
+/// if TableDef.2 is Some, then it is a function type, otherwise it is a relation type.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TableDef(pub Name, pub Box<[Type]>, pub Option<Type>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Base(BaseType),
-    Name(Option<Name>),
-    SumType(SumType),
-    Constructor(TypeConstructor),
+    Name(Name),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TypeConstructor(pub Name, Box<[Type]>);
-
-pub type SumType = Box<[TypeConstructor]>;
+impl Type {
+    pub fn to_base_type(&self) -> Type {
+        match self {
+            Type::Base(base) => Type::Base(base.clone()),
+            Type::Name(_) => Type::Base(BaseType::Id),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BaseType {

@@ -3,8 +3,8 @@ use smallvec::SmallVec;
 
 use crate::{
     common::{ColumnIndex, Id, Variable},
-    regraph::TableId,
-    table::Row,
+    core::regraph::TableId,
+    core::table::Row,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

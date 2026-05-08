@@ -17,3 +17,11 @@ pub type Name = String;
 
 pub type Map<K, V> = FxHashMap<K, V>;
 pub type Set<K> = FxHashSet<K>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Atom {
+    Int(i64),
+    Uint(u64),
+    Bool(bool),
+    Str(String),
+}
