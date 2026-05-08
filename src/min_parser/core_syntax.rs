@@ -6,8 +6,7 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::common::Atom;
-use crate::core::rule::Op;
+use crate::common::{Atom, TableName, TypeName};
 use crate::min_parser::parser::category::{
     Assoc, Category, ParserContext, ParserEnv, ParserFn, ParserResult, TrailingParserFn, parse_inside_group
 };
@@ -17,7 +16,7 @@ use crate::min_parser::tokenize::token::TokenKind;
 use crate::min_parser::tokenize::{
     token_tree::{GroupKind, TokenTree},
 };
-use crate::syntax::{AtomOrVariable, Body, Command, Expr, FunctionCall, Head, Pattern, Rule};
+use crate::syntax::{AtomOrVariable, Body, Command, Expr, FunctionCall, Head, Op, Pattern, Rule};
 use crate::types::{BaseType, SumType, TableDef, Type, TypeConstructor, TypeDef};
 
 
@@ -243,6 +242,7 @@ pub fn parse_type_constructor<'a>(ctx: ParserContext<'a>) -> ParserResult<'a, Ty
     Ok((TypeConstructor(name, types), ctx))
 }
 
+// ATOM_LEADING + "@paran"
 const EXPR_LEADING: [ &str; 7 ] = [ "@ident", "-", "@int", "@str", "true", "false", "@paren" ];
 #[must_use]
 pub fn build_expr_parser_env(atom: Rc<ParserEnv<AtomOrVariable>>) -> ParserEnv<Expr> {
@@ -403,6 +403,17 @@ pub fn parse_body<'a>(
             let ((call, result), ctx) = parse_insert_like(ctx, env)?;
             Ok((Body::Insert(call, result).into(), ctx))
         }
+        "let" => {
+            let (_, ctx) = ctx.next_token()?;
+            let (name, ctx) = ctx.expect_ident()?;
+            let (_, ctx) = ctx.expect(":=")?;
+            let (defined, ctx) = ctx.parse(env, "Expr", 0)?;
+            let Expr::FunctionCall(call) = defined else {
+                return Err("Expecting function call".into());
+            };
+
+            Ok((Body::Let(name, call), ctx))
+        }
         _ => Err(format!("Unknown body: {key}"))
     }
 }
@@ -543,7 +554,7 @@ pub fn parse_command<'a>(
             }
 
             let def = TypeDef(name.clone(), SumType(cons.into()));
-            let def = Command::TypeDef(name, def);
+            let def = Command::TypeDef(TypeName(name), def);
 
             Ok((def, ctx))
         }
@@ -559,7 +570,7 @@ pub fn parse_command<'a>(
             };
 
             let def = TableDef(name.clone(), params, ret);
-            Ok((Command::TableDef(name, def), ctx))
+            Ok((Command::TableDef(TableName(name), def), ctx))
         }
         "query" => {
             let (heads, ctx) = parse_heads(ctx, expr_env, pat_env)?;
@@ -614,7 +625,10 @@ fact 5
 fact path 2 3
 fact path 3 4
 rule path a b, path c d, if b = c => union (path a b) <- (path c d)
-rule path _ (path a 1) => union path a a <- path a a
+rule path _ (path a 1) => 
+    let refl := path a a;
+    insert path a a;
+    union refl <- refl
 type Nat
 | zro()
 | suc(Nat)
@@ -629,7 +643,7 @@ query path a b, if a = b";
             "fact path 2u 3u",
             "fact path 3u 4u",
             "rule path a b, path c d, if b = c => union (path a b) <- (path c d)",
-            "rule path _ (path a 1u) => union (path a a) <- (path a a)",
+            "rule path _ (path a 1u) => let refl := path a a ; insert path a a ; union refl <- refl",
             r"type Nat
 | zro()
 | suc(Nat)

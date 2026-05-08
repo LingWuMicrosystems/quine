@@ -256,7 +256,9 @@ impl Display for Body {
                 write!(f, " <- ")?;
                 r.fmt_internal(f, true)
             },
-            Body::Let(function_call) => todo!(),
+            Body::Let(name, call) => {
+                write!(f, "let {name} := {call}")
+            },
         }
     }
 }
