@@ -13,6 +13,15 @@ pub struct ColumnIndex(pub usize);
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Variable(pub usize);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeName(pub Name);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TableName(pub Name);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ConstructorName(pub Name);
+
 pub type Name = String;
 
 pub type Map<K, V> = FxHashMap<K, V>;

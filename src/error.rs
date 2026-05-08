@@ -1,5 +1,6 @@
-use crate::common::Name;
+use crate::common::{TableName, TypeName};
 
 pub enum TypeCheckError {
-    DuplicateName(Name),
+    DuplicateTableName(TableName),
+    DuplicateTypeName(TypeName),
 }
