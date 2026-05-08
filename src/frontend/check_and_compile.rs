@@ -1,11 +1,16 @@
-use alloc::{vec, vec::Vec};
+use alloc::vec;
+use alloc::vec::Vec;
 
 use crate::{
-    common::{Atom, TableName},
-    core::{command::BackendCommand, rule},
-    env::{DataTypeEnv, TableEnv},
-    error::TypeCheckError,
-    syntax::{Command, Op, VarName},
+    core::command::BackendCommand,
+    frontend::{
+        env::{DataTypeEnv, TableEnv},
+        error::TypeCheckError,
+        syntax::Command,
+        syntax2flat_clause::{
+            AnonymousVarCounter, function_call2flat_clause, syntax_rule2flat_clause,
+        },
+    },
     types::{TableDef, Type},
 };
 
@@ -16,7 +21,7 @@ pub struct CompileEnv {
 }
 
 impl CompileEnv {
-    pub fn check_and_compile(
+    pub fn check_and_compile_command(
         &mut self,
         command: Command,
     ) -> Result<Vec<BackendCommand>, TypeCheckError> {
@@ -36,27 +41,22 @@ impl CompileEnv {
                 Ok(vec![BackendCommand::AddTable(table_def)])
             }
             Command::Rule(rule) => {
-                let rule = self.check_and_compile_rule(&rule)?;
-                Ok(vec![BackendCommand::AddRule(rule)])
+                // let rule = syntax_rule2flat_clause(&rule)?;
+                // Ok(vec![BackendCommand::AddRule(rule)])
+                todo!()
             }
-            Command::Fact(fact) => todo!(),
+            Command::Fact(fact) => {
+                let mut vars = vec![];
+                let mut clauses = vec![];
+                let (_, r) = function_call2flat_clause(
+                    &fact,
+                    &mut vars,
+                    &mut clauses,
+                    AnonymousVarCounter::default(),
+                );
+                Ok(vec![])
+            }
             Command::Query(rule) => todo!(),
         }
     }
-
-    pub fn check_and_compile_rule(
-        &mut self,
-        rule: &crate::syntax::Rule,
-    ) -> Result<rule::Rule, TypeCheckError> {
-        // let mut variables = vec![];
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum FlatClause {
-    Lookup(VarName, TableName, Vec<VarName>),
-    Eq(VarName, VarName),
-    Constraint(VarName, Op, Atom),
-    Guard(VarName, Op, VarName),
 }

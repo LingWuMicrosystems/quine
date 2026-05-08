@@ -6,13 +6,10 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
-pub mod check_and_compile;
 pub mod common;
 pub mod core;
-pub mod env;
-pub mod error;
 pub mod frontend;
-pub mod syntax;
 pub mod types;
 pub mod uf;
+pub mod min_parser;
 pub mod min_parser;
