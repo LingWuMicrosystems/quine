@@ -16,7 +16,7 @@ use crate::min_parser::tokenize::token::TokenKind;
 use crate::min_parser::tokenize::{
     token_tree::{GroupKind, TokenTree},
 };
-use crate::syntax::{AtomOrVariable, Body, Command, Expr, FunctionCall, Head, Op, Pattern, Rule};
+use crate::frontend::syntax::{AtomOrVariable, Body, Command, Expr, FunctionCall, Head, Op, Pattern, Rule};
 use crate::types::{BaseType, SumType, TableDef, Type, TypeConstructor, TypeDef};
 
 
@@ -461,8 +461,11 @@ pub fn parse_heads<'a>(
                 ctx = mctx;
             }
             _ => {
-                let (p, mctx) = ctx.parse(pat_env, "Pattern", 0)?;
-                heads.push(Head::Pattern(p));
+                let (p, mctx) = ctx.parse(expr_env, "Expr", 0)?;
+                let Expr::FunctionCall(call) = p else {
+                    return Err("Expecting pattern".into());
+                };
+                heads.push(Head::Match(call));
                 ctx = mctx;
             }
         }
@@ -538,8 +541,10 @@ pub fn parse_command<'a>(
         }
         "fact" => {
             let (expr, ctx) = ctx.parse(expr_env, "Expr", 0)?;
-            let fact = expr.try_into()?;
-            Ok((Command::Fact(fact), ctx))
+            let Expr::FunctionCall(call) = expr else {
+                return Err("Expecting function call".into());
+            };
+            Ok((Command::Fact(call), ctx))
         }
         "type" => {
             let (name, mut ctx) = ctx.expect_ident()?;
@@ -621,7 +626,6 @@ mod tests {
     pub fn test_parse0() {
         let code = r"
 fact path 1 2
-fact 5
 fact path 2 3
 fact path 3 4
 rule path a b, path c d, if b = c => union (path a b) <- (path c d)
@@ -639,7 +643,6 @@ query path a b, if a = b";
 
         assert_commands(code, &[
             "fact path 1u 2u",
-            "fact 5u",
             "fact path 2u 3u",
             "fact path 3u 4u",
             "rule path a b, path c d, if b = c => union (path a b) <- (path c d)",

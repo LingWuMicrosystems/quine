@@ -12,4 +12,3 @@ pub mod frontend;
 pub mod types;
 pub mod uf;
 pub mod min_parser;
-pub mod min_parser;

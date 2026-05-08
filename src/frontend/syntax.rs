@@ -12,7 +12,7 @@ pub enum Command {
     TypeDef(TypeName, TypeDef),
     TableDef(TableName, TableDef),
     Rule(Rule),
-    Fact(Fact),
+    Fact(FunctionCall),
     // repl only
     Query(Heads),
 }
@@ -41,7 +41,7 @@ pub trait VarExtractor {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Head {
-    Pattern(Pattern),
+    Match(FunctionCall),
     LetEq(Expr, Expr),
     Guard(Op, Expr, Expr),
 }
@@ -59,7 +59,7 @@ pub enum Op {
 impl VarExtractor for Head {
     fn extract_vars(&self) -> Set<VarName> {
         match self {
-            Head::Pattern(pattern) => pattern.extract_vars(),
+            Head::Match(pattern) => pattern.extract_vars(),
             Head::LetEq(expr, expr1) | Head::Guard(_, expr, expr1) => expr
                 .extract_vars()
                 .union(&expr1.extract_vars())
@@ -313,7 +313,7 @@ impl Display for Op {
 impl Display for Head {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Head::Pattern(p) => write!(f, "{p}"),
+            Head::Match(p) => write!(f, "{p}"),
             Head::LetEq(l, r) => {
                 write!(f, "leteq ")?;
                 l.fmt_internal(f, true)?;
@@ -425,7 +425,7 @@ impl Display for Command {
                 Ok(())
             },
             Command::Fact(fact) => {
-                let expr: Expr = fact.into();
+                let expr: Expr = Expr::FunctionCall(fact.clone());
                 write!(f, "fact {expr}")
             },
             Command::TableDef(_, def) => write!(f, "{def}"),
