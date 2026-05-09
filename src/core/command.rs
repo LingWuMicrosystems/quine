@@ -1,15 +1,18 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
-    common::Name,
-    core::rule::{Atom, Rule},
+    common::{Atom, Name},
+    core::rule::{Action, Query, Rule},
     types::TableDef,
 };
 
+#[derive(Debug, Clone)]
 pub enum BackendCommand {
-    InsertRow(InsertRow),
-    AddTable(TableDef),
+    AddTables(Vec<TableDef>),
     AddRule(Rule),
+    Action(Action),
+    // repl only
+    Query(Query),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

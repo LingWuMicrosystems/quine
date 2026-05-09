@@ -2,7 +2,7 @@ use alloc::{format, vec::Vec};
 
 use crate::{
     common::{ConstructorName, Map, TableName, TypeName},
-    frontend::error::TypeCheckError,
+    frontend::error::CompileError,
     types::{TableDef, TypeDef},
 };
 
@@ -13,14 +13,27 @@ pub struct TableEnv {
 }
 
 impl TableEnv {
-    pub fn insert(&mut self, name: TableName, def: TableDef) -> Result<(), TypeCheckError> {
+    pub fn insert(&mut self, name: TableName, def: TableDef) -> Result<(), CompileError> {
         let offset = self.tables.len();
         if self.name_map.contains_key(&name) {
-            return Err(TypeCheckError::DuplicateTableName(name));
+            return Err(CompileError::DuplicateTableName(name));
         }
         self.tables.push(def.clone());
         self.name_map.insert(name, offset);
         Ok(())
+    }
+
+    pub fn get_offset(&self, name: &TableName) -> Option<usize> {
+        self.name_map.get(name).copied()
+    }
+
+    pub fn get(&self, offset: usize) -> Option<&TableDef> {
+        self.tables.get(offset)
+    }
+
+    pub fn get_from_name(&self, name: &TableName) -> Option<&TableDef> {
+        let offset = self.name_map.get(name)?;
+        self.tables.get(*offset)
     }
 }
 
@@ -34,9 +47,9 @@ pub struct DataTypeEnv {
 }
 
 impl DataTypeEnv {
-    pub fn insert(&mut self, name: TypeName, type_def: TypeDef) -> Result<(), TypeCheckError> {
+    pub fn insert(&mut self, name: TypeName, type_def: TypeDef) -> Result<(), CompileError> {
         if self.name2type_map.contains_key(&name) {
-            return Err(TypeCheckError::DuplicateTypeName(name));
+            return Err(CompileError::DuplicateTypeName(name));
         }
         let offset = self.type_list.len();
         self.type_list.push(type_def.clone());

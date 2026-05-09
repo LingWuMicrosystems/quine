@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 
 use crate::{
     common::{Atom, Name, TableName, TypeName},
+    core::rule,
     types::{TableDef, TypeDef},
 };
 
@@ -48,6 +49,43 @@ pub enum Op {
     Gt,
     Leq,
     Geq,
+}
+
+impl Op {
+    pub fn to_constraint_op(&self, is_sign: bool) -> rule::Op {
+        match self {
+            Op::Equ => rule::Op::Equ,
+            Op::Neq => rule::Op::Neq,
+            Op::Lt => {
+                if is_sign {
+                    rule::Op::Lt
+                } else {
+                    rule::Op::Ltu
+                }
+            }
+            Op::Gt => {
+                if is_sign {
+                    rule::Op::Gt
+                } else {
+                    rule::Op::Gtu
+                }
+            }
+            Op::Leq => {
+                if is_sign {
+                    rule::Op::Leq
+                } else {
+                    rule::Op::Lequ
+                }
+            }
+            Op::Geq => {
+                if is_sign {
+                    rule::Op::Geq
+                } else {
+                    rule::Op::Gequ
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
