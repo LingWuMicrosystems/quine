@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
-    common::{ColumnIndex, Value, Variable},
+    common::{ColumnIndex, Value, VarId},
     core::{regraph::TableId, table::Row},
     frontend::syntax::VarName,
     types::Type,
@@ -30,8 +30,8 @@ pub struct Constraint {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CrossConstraint {
     pub op: Op,
-    pub lhs: Variable,
-    pub rhs: Variable,
+    pub lhs: VarId,
+    pub rhs: VarId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -69,7 +69,7 @@ pub struct Action {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ActionTail {
-    Union(Variable, Variable),
+    Union(VarId, VarId),
     Insert(TableId, Box<[ValueOrVariable]>, Option<ValueOrVariable>),
     // Delete(TableId, Variable),
 }
@@ -84,7 +84,7 @@ pub struct FunctionCall {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ValueOrVariable {
     Value(Value),
-    Variable(Variable),
+    Variable(VarId),
 }
 
 impl ValueOrVariable {
@@ -96,7 +96,7 @@ impl ValueOrVariable {
     }
 }
 
-impl Variable {
+impl VarId {
     pub fn resolve(&self, row: &Row) -> Value {
         row.0[self.0]
     }

@@ -3,8 +3,10 @@ use alloc::{boxed::Box, vec};
 
 use crate::common::Set;
 use crate::core::rule::{Constraint, VarColsScanRule};
+use crate::frontend::head2flat_clause::NameOrVariable;
+use crate::frontend::syntax::VarName;
 use crate::{
-    common::{Map, Variable},
+    common::{Map, VarId},
     core::{
         command::BackendCommand,
         rule::{self, FusedScan, Query, VariableRecord},
@@ -14,12 +16,12 @@ use crate::{
         env::{DataTypeEnv, TableEnv},
         error::CompileError,
         head2flat_clause::{FlatClause, heads2flat_clause},
-        syntax::{self, Command, Head, VarName},
+        syntax::{self, Command, Head},
     },
     types::{TableDef, Type},
 };
 
-pub type ResolvedClause = FlatClause<(Variable, Type)>;
+pub type ResolvedClause = FlatClause<(VarId, Type)>;
 
 #[derive(Debug, Default, Clone)]
 pub struct CompileEnv {
@@ -144,37 +146,105 @@ impl CompileEnv {
         let mut var_record = Vec::default();
         let mut resolved_clauses = Vec::default();
         for c in clauses {
-            resolved_clauses.push(self.clause_check(&c, &mut var_record)?);
+            resolved_clauses.push(self.clause_check(c, &mut var_record)?);
         }
         Ok((resolved_clauses, var_record))
     }
 
     fn clause_check(
         &self,
-        clause: &FlatClause<VarName>,
+        clause: FlatClause<NameOrVariable>,
         var_record: &mut VariableRecord,
     ) -> Result<ResolvedClause, CompileError> {
         match clause {
             FlatClause::Lookup(var, table_name, column_index) => {
                 let table = self
                     .table_types
-                    .get_from_name(table_name)
+                    .get_from_name(&table_name)
                     .ok_or_else(|| CompileError::InvalidTableName(table_name.clone()))?;
                 if column_index.0 > table.1.len() {
                     return Err(CompileError::InvalidTableName(table_name.clone()));
                 }
-                let ty = if column_index.0 == table.1.len() {
+                let infered_ty = if column_index.0 == table.1.len() {
                     table.2.clone()
                 } else {
                     table.1.get(column_index.0).cloned()
                 }
                 .ok_or_else(|| {
-                    CompileError::InvalidTableColumn(table_name.clone(), *column_index)
+                    CompileError::InvalidTableColumn(table_name.clone(), column_index)
                 })?;
+
+                let (defined_ty, position) = name_or_variable_resolve(&var, var_record)?;
+
+                if let Some((defined_ty, _)) = defined_ty {
+                    if infered_ty != defined_ty {
+                        return Err(CompileError::TypeUnificationError(
+                            var.clone(),
+                            infered_ty,
+                            defined_ty.clone(),
+                        ));
+                    }
+                    Ok(FlatClause::Lookup(
+                        (VarId(position), defined_ty),
+                        table_name,
+                        column_index,
+                    ))
+                } else {
+                    var_record.insert(position, (infered_ty.clone(), None));
+                    Ok(FlatClause::Lookup(
+                        (VarId(position), infered_ty),
+                        table_name,
+                        column_index,
+                    ))
+                }
             }
-            FlatClause::ConstCompare(op, _, atom) => todo!(),
-            FlatClause::Guard(op, _, _) => todo!(),
+            FlatClause::ConstCompare(op, var, atom) => {
+                let (defined_ty, position) = name_or_variable_resolve(&var, var_record)?;
+                let (defined_ty, _) =
+                    defined_ty.ok_or_else(|| CompileError::InvalidVariableName(var.clone()))?;
+                Ok(FlatClause::ConstCompare(
+                    op.clone(),
+                    (VarId(position), defined_ty.clone()),
+                    atom.clone(),
+                ))
+            }
+            FlatClause::Guard(op, v0, v1) => {
+                let (defined_ty0, position0) = name_or_variable_resolve(&v0, var_record)?;
+                let (defined_ty0, _) =
+                    defined_ty0.ok_or_else(|| CompileError::InvalidVariableName(v0.clone()))?;
+                let (defined_ty1, position1) = name_or_variable_resolve(&v1, var_record)?;
+                let (defined_ty1, _) =
+                    defined_ty1.ok_or_else(|| CompileError::InvalidVariableName(v1.clone()))?;
+                Ok(FlatClause::Guard(
+                    op.clone(),
+                    (VarId(position0), defined_ty0.clone()),
+                    (VarId(position1), defined_ty1.clone()),
+                ))
+            }
         }
-        todo!()
+    }
+}
+
+fn name_or_variable_resolve(
+    var: &NameOrVariable,
+    var_record: &[(Type, Option<VarName>)],
+) -> Result<(Option<(Type, Option<VarName>)>, usize), CompileError> {
+    match var {
+        NameOrVariable::Var(var_id) => Ok((var_record.get(var_id.0).cloned(), var_id.0)),
+        NameOrVariable::Name(name) => {
+            let position = var_record.iter().position(|(_, name_in_record)| {
+                if let Some(name_in_record) = name_in_record
+                    && name == name_in_record
+                {
+                    true
+                } else {
+                    false
+                }
+            });
+            let position = position.ok_or(CompileError::InvalidVariableName(
+                NameOrVariable::Name(name.clone()),
+            ))?;
+            Ok((var_record.get(position).cloned(), position))
+        }
     }
 }

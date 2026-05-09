@@ -1,7 +1,7 @@
-use alloc::{format, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 
 use crate::{
-    common::{Atom, ColumnIndex, TableName},
+    common::{Atom, ColumnIndex, TableName, VarId},
     frontend::{
         error::CompileError,
         syntax::{AtomOrVariable, Expr, FunctionCall, Head, Op, VarName},
@@ -16,7 +16,13 @@ pub enum FlatClause<V> {
     Guard(Op, V, V),
 }
 
-pub fn heads2flat_clause(heads: &[Head]) -> Result<Vec<FlatClause<VarName>>, CompileError> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NameOrVariable {
+    Var(VarId),
+    Name(VarName),
+}
+
+pub fn heads2flat_clause(heads: &[Head]) -> Result<Vec<FlatClause<NameOrVariable>>, CompileError> {
     let mut clauses = vec![];
     let mut counter = AnonymousVarCounter::default();
     for head in heads.iter() {
@@ -27,7 +33,7 @@ pub fn heads2flat_clause(heads: &[Head]) -> Result<Vec<FlatClause<VarName>>, Com
 
 fn head2flat_clause(
     head: &Head,
-    clauses: &mut Vec<FlatClause<VarName>>,
+    clauses: &mut Vec<FlatClause<NameOrVariable>>,
     counter: AnonymousVarCounter,
 ) -> AnonymousVarCounter {
     match head {
@@ -58,9 +64,9 @@ fn head2flat_clause(
 
 fn function_call2flat_clause(
     call: &FunctionCall,
-    clauses: &mut Vec<FlatClause<VarName>>,
+    clauses: &mut Vec<FlatClause<NameOrVariable>>,
     mut counter: AnonymousVarCounter,
-) -> (AnonymousVarCounter, VarName) {
+) -> (AnonymousVarCounter, NameOrVariable) {
     for i in 0..call.1.len() {
         let (new_counter, var) = expr2flat_clause(&call.1[i], clauses, counter);
         clauses.push(FlatClause::Lookup(
@@ -70,22 +76,26 @@ fn function_call2flat_clause(
         ));
         counter = new_counter;
     }
-    let out = format!("t_{}", counter.0);
-    (counter.next(), out)
+    (
+        counter.clone().next(),
+        NameOrVariable::Var(VarId(counter.0)),
+    )
 }
 
 fn expr2flat_clause(
     expr: &Expr,
-    clauses: &mut Vec<FlatClause<VarName>>,
+    clauses: &mut Vec<FlatClause<NameOrVariable>>,
     counter: AnonymousVarCounter,
-) -> (AnonymousVarCounter, VarName) {
+) -> (AnonymousVarCounter, NameOrVariable) {
     match expr {
         Expr::AtomOrVariable(AtomOrVariable::Atom(a)) => {
-            let name = format!("t_{}", counter.0);
-            clauses.push(FlatClause::ConstCompare(Op::Equ, name.clone(), a.clone()));
-            (counter.next(), name)
+            let id = NameOrVariable::Var(VarId(counter.0));
+            clauses.push(FlatClause::ConstCompare(Op::Equ, id.clone(), a.clone()));
+            (counter.next(), id)
         }
-        Expr::AtomOrVariable(AtomOrVariable::Variable(v)) => (counter, v.clone()),
+        Expr::AtomOrVariable(AtomOrVariable::Variable(v)) => {
+            (counter, NameOrVariable::Name(v.clone()))
+        }
         Expr::FunctionCall(call) => function_call2flat_clause(&call, clauses, counter),
     }
 }

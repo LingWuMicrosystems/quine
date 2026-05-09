@@ -11,7 +11,7 @@ pub struct RowIndex(pub usize);
 pub struct ColumnIndex(pub usize);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Variable(pub usize);
+pub struct VarId(pub usize);
 
 // #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 // pub struct VarName(pub Name);

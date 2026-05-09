@@ -2,7 +2,8 @@ use alloc::boxed::Box;
 
 use crate::{
     common::{ColumnIndex, TableName, TypeName},
-    frontend::syntax::VarName,
+    frontend::{head2flat_clause::NameOrVariable, syntax::VarName},
+    types::Type,
 };
 
 pub enum CompileError {
@@ -10,5 +11,7 @@ pub enum CompileError {
     DuplicateTypeName(TypeName),
     InvalidTableName(TableName),
     InvalidTableColumn(TableName, ColumnIndex),
+    InvalidVariableName(NameOrVariable),
     VariableInvalidInFact(Box<[VarName]>),
+    TypeUnificationError(NameOrVariable, Type, Type),
 }

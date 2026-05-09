@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
 use crate::{
-    common::{Map, Variable},
+    common::{Map, VarId},
     core::rule::{Action, VariableRecord},
     frontend::syntax::{Body, FunctionCall, VarName},
     types::BaseType,
@@ -18,7 +18,7 @@ pub fn body2action(body: &[Body], var_record: &VariableRecord) -> Action {
 
 pub fn function_call2action(
     body: &FunctionCall,
-    var_record: &Map<VarName, (Variable, BaseType)>,
+    var_record: &Map<VarName, (VarId, BaseType)>,
 ) -> Vec<Action> {
     todo!()
 }
