@@ -8,9 +8,9 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum BackendCommand {
-    Actions(Vec<Action>),
     AddTables(Vec<TableDef>),
     AddRule(Rule),
+    Action(Action),
     // repl only
     Query(Query),
 }

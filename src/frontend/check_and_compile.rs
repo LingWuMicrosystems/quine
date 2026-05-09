@@ -2,7 +2,8 @@ use alloc::vec::Vec;
 use alloc::{boxed::Box, vec};
 
 use crate::common::Set;
-use crate::core::rule::{Constraint, VarColsScanRule};
+use crate::core::rule::{Action, Constraint, VarColsScanRule};
+use crate::frontend::body2action::{bodys2action, function_call_transform};
 use crate::frontend::head2flat_clause::NameOrVariable;
 use crate::frontend::syntax::VarName;
 use crate::{
@@ -12,7 +13,6 @@ use crate::{
         rule::{self, FusedScan, Query, VariableRecord},
     },
     frontend::{
-        body2action::{body2action, function_call2action},
         env::{DataTypeEnv, TableEnv},
         error::CompileError,
         head2flat_clause::{FlatClause, heads2flat_clause},
@@ -50,25 +50,37 @@ impl CompileEnv {
                 Ok(BackendCommand::AddTables(vec![table_def]))
             }
             Command::Rule(rule) => Ok(BackendCommand::AddRule(self.check_and_compile_rule(&rule)?)),
-            Command::Fact(fact) => Ok(BackendCommand::Actions(function_call2action(
-                &fact,
-                &Map::default(),
-            ))),
+            Command::Fact(fact) => {
+                let mut lets = Vec::default();
+                let lets_map = Map::default();
+                let _call = function_call_transform(
+                    &fact,
+                    &self.table_types.name_map,
+                    &VariableRecord::default(),
+                    &mut lets,
+                    &Map::default(),
+                )?;
+                let lets = lets.into_boxed_slice();
+                Ok(BackendCommand::Action(Action {
+                    lets_map,
+                    lets,
+                    tail: Box::new([]),
+                }))
+            }
             Command::Query(head) => Ok(BackendCommand::Query(self.check_and_compile_query(&head)?)),
         }
     }
 
     fn check_and_compile_rule(&self, rule: &syntax::Rule) -> Result<rule::Rule, CompileError> {
         let query = self.check_and_compile_query(&rule.heads)?;
-        let action = body2action(&rule.bodys, &query.variables);
+        let action = bodys2action(&rule.bodys, &self.table_types.name_map, &query.variables)?;
         Ok(rule::Rule { query, action })
     }
 
     fn check_and_compile_query(&self, head: &[Head]) -> Result<Query, CompileError> {
-        let (clauses, variables) = self.check_and_compile_heads(&head)?;
+        let (clauses, variables) = self.check_and_compile_heads(head)?;
 
         let var_cols: Box<[VarColsScanRule]> = (0..variables.len())
-            .into_iter()
             .map(|offset| self.collect_scans(offset, &clauses))
             .collect::<Result<Box<[_]>, _>>()?;
 
@@ -108,7 +120,7 @@ impl CompileEnv {
             {
                 let table_offset = self
                     .table_types
-                    .get_offset(&table)
+                    .get_offset(table)
                     .ok_or_else(|| CompileError::InvalidTableName(table.clone()))?;
 
                 let cs = clauses
@@ -142,7 +154,7 @@ impl CompileEnv {
         &self,
         heads: &[Head],
     ) -> Result<(Vec<ResolvedClause>, VariableRecord), CompileError> {
-        let clauses = heads2flat_clause(&heads)?;
+        let clauses = heads2flat_clause(heads)?;
         let mut var_record = Vec::default();
         let mut resolved_clauses = Vec::default();
         for c in clauses {
@@ -203,7 +215,7 @@ impl CompileEnv {
                 let (defined_ty, _) =
                     defined_ty.ok_or_else(|| CompileError::InvalidVariableName(var.clone()))?;
                 Ok(FlatClause::ConstCompare(
-                    op.clone(),
+                    op,
                     (VarId(position), defined_ty.clone()),
                     atom.clone(),
                 ))
@@ -216,7 +228,7 @@ impl CompileEnv {
                 let (defined_ty1, _) =
                     defined_ty1.ok_or_else(|| CompileError::InvalidVariableName(v1.clone()))?;
                 Ok(FlatClause::Guard(
-                    op.clone(),
+                    op,
                     (VarId(position0), defined_ty0.clone()),
                     (VarId(position1), defined_ty1.clone()),
                 ))
@@ -225,6 +237,7 @@ impl CompileEnv {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn name_or_variable_resolve(
     var: &NameOrVariable,
     var_record: &[(Type, Option<VarName>)],

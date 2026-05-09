@@ -82,9 +82,9 @@ impl RelatedEGraph {
 
     fn apply_action_tail(&mut self, tail: &ActionTail, row: &Row) {
         match tail {
-            ActionTail::Union(var0, var1) => self.union(var0.resolve(&row), var1.resolve(&row)),
+            ActionTail::Union(var0, var1) => self.union(var0.resolve(row), var1.resolve(row)),
             ActionTail::Insert(table_id, args, result) => {
-                let args = Row(args.iter().map(|arg| arg.resolve(&row)).collect());
+                let args = Row(args.iter().map(|arg| arg.resolve(row)).collect());
                 if let Some(result) = result {
                     self.insert(*table_id, args, result.resolve(row));
                 } else {

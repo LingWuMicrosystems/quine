@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
-    common::{ColumnIndex, Value, VarId},
+    common::{ColumnIndex, Map, Value, VarId},
     core::{regraph::TableId, table::Row},
     frontend::syntax::VarName,
     types::Type,
@@ -34,7 +34,7 @@ pub struct CrossConstraint {
     pub rhs: VarId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
     pub query: Query,
     pub action: Action,
@@ -61,15 +61,16 @@ pub struct FusedScan {
     pub constraints: Box<[Constraint]>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Action {
+    pub lets_map: Map<VarName, VarId>,
     pub lets: Box<[FunctionCall]>,
     pub tail: Box<[ActionTail]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ActionTail {
-    Union(VarId, VarId),
+    Union(ValueOrVariable, ValueOrVariable),
     Insert(TableId, Box<[ValueOrVariable]>, Option<ValueOrVariable>),
     // Delete(TableId, Variable),
 }

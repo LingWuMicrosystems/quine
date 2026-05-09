@@ -38,26 +38,26 @@ fn head2flat_clause(
 ) -> AnonymousVarCounter {
     match head {
         Head::Match(pattern) => {
-            let (new_counter, _) = function_call2flat_clause(&pattern, clauses, counter);
-            return new_counter;
+            let (new_counter, _) = function_call2flat_clause(pattern, clauses, counter);
+            new_counter
         }
         Head::LetEq(expr, expr1) => {
             let (new_counter, expr) = expr2flat_clause(expr, clauses, counter);
             let (new_counter, expr1) = expr2flat_clause(expr1, clauses, new_counter);
             clauses.push(FlatClause::Guard(Op::Equ, expr, expr1));
-            return new_counter;
+            new_counter
         }
         Head::Guard(op, expr, Expr::AtomOrVariable(AtomOrVariable::Atom(a)))
         | Head::Guard(op, Expr::AtomOrVariable(AtomOrVariable::Atom(a)), expr) => {
             let (new_counter, var) = expr2flat_clause(expr, clauses, counter);
             clauses.push(FlatClause::ConstCompare(*op, var, a.clone()));
-            return new_counter;
+            new_counter
         }
         Head::Guard(op, expr, expr1) => {
             let (new_counter, expr) = expr2flat_clause(expr, clauses, counter);
             let (new_counter, expr1) = expr2flat_clause(expr1, clauses, new_counter);
             clauses.push(FlatClause::Guard(*op, expr, expr1));
-            return new_counter;
+            new_counter
         }
     }
 }
@@ -76,10 +76,7 @@ fn function_call2flat_clause(
         ));
         counter = new_counter;
     }
-    (
-        counter.clone().next(),
-        NameOrVariable::Var(VarId(counter.0)),
-    )
+    (counter.next(), NameOrVariable::Var(VarId(counter.0)))
 }
 
 fn expr2flat_clause(
@@ -96,6 +93,6 @@ fn expr2flat_clause(
         Expr::AtomOrVariable(AtomOrVariable::Variable(v)) => {
             (counter, NameOrVariable::Name(v.clone()))
         }
-        Expr::FunctionCall(call) => function_call2flat_clause(&call, clauses, counter),
+        Expr::FunctionCall(call) => function_call2flat_clause(call, clauses, counter),
     }
 }
