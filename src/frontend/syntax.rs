@@ -3,8 +3,9 @@ use core::fmt::Display;
 use alloc::{boxed::Box, string::String};
 
 use crate::{
-    common::{Atom, Name, Set, TableName, TypeName},
-    types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
+    common::{Atom, Name, TableName, TypeName},
+    core::rule,
+    types::{TableDef, TypeDef},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -56,35 +57,38 @@ pub enum Op {
     Geq,
 }
 
-impl VarExtractor for Head {
-    fn extract_vars(&self) -> Set<VarName> {
+impl Op {
+    pub fn to_constraint_op(&self, is_sign: bool) -> rule::Op {
         match self {
-            Head::Match(pattern) => pattern.extract_vars(),
-            Head::LetEq(expr, expr1) | Head::Guard(_, expr, expr1) => expr
-                .extract_vars()
-                .union(&expr1.extract_vars())
-                .cloned()
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Pattern {
-    Wildcard,
-    AtomOrVariable(AtomOrVariable),
-    Constructor(String, Box<[Pattern]>),
-}
-
-impl VarExtractor for Pattern {
-    fn extract_vars(&self) -> Set<VarName> {
-        match self {
-            Pattern::Wildcard => todo!(),
-            Pattern::AtomOrVariable(e) => e.extract_vars(),
-            Pattern::Constructor(_, patterns) => {
-                patterns.iter().fold(Set::default(), |acc, pattern| {
-                    acc.union(&pattern.extract_vars()).cloned().collect()
-                })
+            Op::Equ => rule::Op::Equ,
+            Op::Neq => rule::Op::Neq,
+            Op::Lt => {
+                if is_sign {
+                    rule::Op::Lt
+                } else {
+                    rule::Op::Ltu
+                }
+            }
+            Op::Gt => {
+                if is_sign {
+                    rule::Op::Gt
+                } else {
+                    rule::Op::Gtu
+                }
+            }
+            Op::Leq => {
+                if is_sign {
+                    rule::Op::Leq
+                } else {
+                    rule::Op::Lequ
+                }
+            }
+            Op::Geq => {
+                if is_sign {
+                    rule::Op::Geq
+                } else {
+                    rule::Op::Gequ
+                }
             }
         }
     }

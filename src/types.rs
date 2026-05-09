@@ -24,6 +24,18 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn is_sign(&self) -> bool {
+        matches!(
+            self,
+            Type::Base(BaseType::I8)
+                | Type::Base(BaseType::I16)
+                | Type::Base(BaseType::I32)
+                | Type::Base(BaseType::I64)
+        )
+    }
+}
+
+impl Type {
     pub fn to_base_type(&self) -> Type {
         match self {
             Type::Base(base) => Type::Base(base.clone()),
