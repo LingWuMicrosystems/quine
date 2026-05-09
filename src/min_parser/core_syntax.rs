@@ -446,7 +446,7 @@ pub fn parse_body<'a>(ctx: ParserContext<'a>, env: &ParserEnv<Expr>) -> ParserRe
 
 pub fn parse_heads<'a>(
     mut ctx: ParserContext<'a>,
-    expr_env: &ParserEnv<Pattern>,
+    expr_env: &ParserEnv<Expr>,
     pat_env: &ParserEnv<Pattern>,
 ) -> ParserResult<'a, Box<[Head]>> {
     let mut heads = Vec::new();
@@ -461,9 +461,9 @@ pub fn parse_heads<'a>(
         match key {
             Some("if") => {
                 (_, ctx) = ctx.next_token()?;
-                let (l, mctx) = ctx.parse(expr_env, "Expr", 0)?;
+                let (l, mctx) = ctx.parse(pat_env, "Pattern", 0)?;
                 let (t, mctx) = mctx.next_token()?;
-                let (r, mctx) = mctx.parse(expr_env, "Expr", 0)?;
+                let (r, mctx) = mctx.parse(pat_env, "Pattern", 0)?;
 
                 let TokenTree::Token(t) = t else {
                     return Err("Expecting compare operation".into());
@@ -479,15 +479,15 @@ pub fn parse_heads<'a>(
             }
             Some("leteq") => {
                 (_, ctx) = ctx.next_token()?;
-                let (l, mctx) = ctx.parse(expr_env, "Expr", 0)?;
+                let (l, mctx) = ctx.parse(pat_env, "Pattern", 0)?;
                 let (_, mctx) = mctx.expect("<-")?;
-                let (r, mctx) = mctx.parse(expr_env, "Expr", 0)?;
+                let (r, mctx) = mctx.parse(pat_env, "Pattern", 0)?;
 
                 heads.push(Head::LetEq(l, r));
                 ctx = mctx;
             }
             _ => {
-                let (p, mctx) = ctx.parse(expr_env, "Expr", 0)?;
+                let (p, mctx) = ctx.parse(pat_env, "Pattern", 0)?;
                 let Pattern::Constructor(call) = p else {
                     return Err("Expecting pattern".into());
                 };
@@ -514,7 +514,7 @@ pub fn parse_heads<'a>(
 // rule (pat...), if a = b, leteq c d => body0 ; body1 ; body2
 pub fn parse_rule<'a>(
     ctx: ParserContext<'a>,
-    env: &ParserEnv<Pattern>,
+    env: &ParserEnv<Expr>,
     pat_env: &ParserEnv<Pattern>,
 ) -> ParserResult<'a, Rule> {
     let mut bodies = Vec::new();
@@ -558,7 +558,6 @@ pub fn parse_rule<'a>(
 
 pub fn parse_command<'a>(
     ctx: ParserContext<'a>,
-    pattern_env: &ParserEnv<Pattern>,
     expr_env: &ParserEnv<Expr>,
     pat_env: &ParserEnv<Pattern>,
 ) -> ParserResult<'a, Command> {
