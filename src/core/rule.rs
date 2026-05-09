@@ -1,9 +1,9 @@
-use alloc::boxed::Box;
-use smallvec::SmallVec;
+use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
-    common::{ColumnIndex, Id, Map, Name, Variable},
+    common::{ColumnIndex, Value, Variable},
     core::{regraph::TableId, table::Row},
+    frontend::syntax::VarName,
     types::Type,
 };
 
@@ -24,7 +24,7 @@ pub enum Op {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Constraint {
     pub op: Op,
-    pub id: Id,
+    pub value: Value,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,54 +34,70 @@ pub struct CrossConstraint {
     pub rhs: Variable,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Rule {
+    pub query: Query,
+    pub action: Action,
+}
+
 /// table -> column -> constraints
 pub type VarColsScanRule = Box<[FusedScan]>;
 
-#[derive(Debug, Clone)]
-pub struct Rule {
-    pub head_var_order: Box<[(Variable, Type)]>,
-    pub head_var_map: Map<Name, Variable>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Query {
+    pub variables: VariableRecord,
 
     pub var_cols: Box<[VarColsScanRule]>,
-    pub constraints: SmallVec<[CrossConstraint; 2]>,
-
-    pub body_var_order: Box<[(Variable, Type)]>,
-    pub body_var_map: Map<Name, Variable>,
-
-    pub actions: SmallVec<[Action; 2]>,
+    pub constraints: Box<[CrossConstraint]>,
 }
 
-#[derive(Debug, Clone)]
+pub type VariableRecord = Vec<(Type, Option<VarName>)>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FusedScan {
     pub table: TableId,
     pub column: ColumnIndex,
-    pub constraints: Option<Constraint>,
+    pub column_type: Type,
+    pub constraints: Box<[Constraint]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Action {
+pub struct Action {
+    pub lets: Box<[FunctionCall]>,
+    pub tail: Box<[ActionTail]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ActionTail {
     Union(Variable, Variable),
-    Insert(TableId, Box<[Atom]>),
+    Insert(TableId, Box<[ValueOrVariable]>, Option<ValueOrVariable>),
     // Delete(TableId, Variable),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Atom {
-    Const(Id),
-    Var(Variable),
+pub struct FunctionCall {
+    pub is_native: bool,
+    pub offset: usize,
+    pub args: Box<[ValueOrVariable]>,
 }
 
-impl Atom {
-    pub fn resolve(&self, row: &Row) -> Id {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ValueOrVariable {
+    Value(Value),
+    Variable(Variable),
+}
+
+impl ValueOrVariable {
+    pub fn resolve(&self, row: &Row) -> Value {
         match self {
-            Atom::Const(id) => *id,
-            Atom::Var(i) => i.resolve(row),
+            ValueOrVariable::Value(id) => *id,
+            ValueOrVariable::Variable(i) => i.resolve(row),
         }
     }
 }
 
 impl Variable {
-    pub fn resolve(&self, row: &Row) -> Id {
+    pub fn resolve(&self, row: &Row) -> Value {
         row.0[self.0]
     }
 }

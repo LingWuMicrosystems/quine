@@ -1,6 +1,14 @@
-use crate::common::{TableName, TypeName};
+use alloc::boxed::Box;
 
-pub enum TypeCheckError {
+use crate::{
+    common::{ColumnIndex, TableName, TypeName},
+    frontend::syntax::VarName,
+};
+
+pub enum CompileError {
     DuplicateTableName(TableName),
     DuplicateTypeName(TypeName),
+    InvalidTableName(TableName),
+    InvalidTableColumn(TableName, ColumnIndex),
+    VariableInvalidInFact(Box<[VarName]>),
 }

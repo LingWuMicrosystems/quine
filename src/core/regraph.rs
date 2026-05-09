@@ -1,12 +1,14 @@
 /// related e-graph
 use alloc::{boxed::Box, vec::Vec};
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use smallvec::{SmallVec, ToSmallVec, smallvec};
+use smallvec::{ToSmallVec, smallvec};
 
 use crate::{
-    common::{ColumnIndex, Id, RowIndex, Set},
-    core::rule::{Action, Constraint, CrossConstraint, FusedScan, Op, Rule, VarColsScanRule},
-    core::table::{Row, Table},
+    common::{RowIndex, Set, Value},
+    core::{
+        rule::{Action, ActionTail, FunctionCall, FusedScan, Op, Query, Rule},
+        table::{Row, Table},
+    },
     uf::UnionFind,
 };
 
@@ -18,8 +20,8 @@ pub struct RelatedEGraph {
 
     tables: Vec<Table>,
 
-    next_id: Id,
-    pending_unions: Vec<(Id, Id)>,
+    next_id: Value,
+    pending_unions: Vec<(Value, Value)>,
 }
 
 pub enum Subset {
@@ -44,70 +46,80 @@ impl RelatedEGraph {
     }
 
     pub fn run_rule(&mut self, rule: &Rule) -> bool {
-        let rows = self.run_query(&rule.var_cols, &rule.constraints, smallvec![]);
+        let rows = self.run_query(&rule.query);
         if rows.is_empty() {
             return false;
         }
-        self.apply_actions(&rule.actions, &rows);
+        self.apply_action(&rule.action, rows);
         true
     }
 
-    pub fn apply_actions(&mut self, actions: &[Action], rows: &Set<Row>) {
-        for action in actions {
-            match action {
-                Action::Union(lhs, rhs) => {
-                    for row in rows.iter() {
-                        let lhs = lhs.resolve(row);
-                        let rhs = rhs.resolve(row);
-                        self.pending_unions.push((lhs, rhs));
-                    }
+    pub fn apply_action(&mut self, actions: &Action, rows: Set<Row>) {
+        for row in rows.into_iter() {
+            self.apply_action_in_row(actions, row);
+        }
+    }
+
+    fn apply_action_in_row(&mut self, action: &Action, mut row: Row) {
+        for call in &action.lets {
+            let args = call.args.iter().map(|arg| arg.resolve(&row)).collect();
+            let result = self.apply_function_call(call, Row(args));
+            row.0.push(result);
+        }
+        for tail in &action.tail {
+            self.apply_action_tail(tail, &row);
+        }
+    }
+
+    fn apply_function_call(&mut self, function_call: &FunctionCall, args: Row) -> Value {
+        if function_call.is_native {
+            unimplemented!();
+        }
+        let result = self.alloc_id();
+        self.insert(function_call.offset, args, result);
+        result
+    }
+
+    fn apply_action_tail(&mut self, tail: &ActionTail, row: &Row) {
+        match tail {
+            ActionTail::Union(var0, var1) => self.union(var0.resolve(&row), var1.resolve(&row)),
+            ActionTail::Insert(table_id, args, result) => {
+                let args = Row(args.iter().map(|arg| arg.resolve(&row)).collect());
+                if let Some(result) = result {
+                    self.insert(*table_id, args, result.resolve(row));
+                } else {
+                    let id = self.alloc_id();
+                    self.insert(*table_id, args, id);
                 }
-                Action::Insert(table_id, action_row) => {
-                    for row in rows.iter() {
-                        let row = action_row.iter().map(|a| a.resolve(row)).collect();
-                        let new_id = self.alloc_id();
-                        self.insert(*table_id, Row(row), new_id);
-                    }
-                } // Action::Delete(table_id, _) => self.delete(*table_id),
             }
         }
     }
 
-    pub fn run_query(
-        &self,
-        var_cols: &[VarColsScanRule],
-        cross_rules: &[CrossConstraint],
-        binding: SmallVec<[(ColumnIndex, Constraint); 4]>,
-    ) -> Set<Row> {
-        let Some(cols) = var_cols.first() else {
+    pub fn run_query(&self, query: &Query) -> Set<Row> {
+        let Some(cols) = query.var_cols.first() else {
             return Set::default();
         };
 
         let mut rows: Set<Row> = cols
             .iter()
-            .map(|fusion| self.fused_scan(fusion, binding.clone()))
+            .map(|fusion| self.fused_scan(fusion))
             .reduce(|l, r| l.intersection(&r).copied().collect())
             .unwrap_or_default()
             .into_iter()
             .map(|id| Row(smallvec![id]))
             .collect();
 
-        let rest = &var_cols[1..];
+        let rest = &query.var_cols[1..];
 
         for cols in rest {
             rows = rows
                 .iter()
                 .flat_map(|row| {
-                    let set = cols
-                        .iter()
-                        .map(|fused_scan| {
-                            let mut full_binding = binding.clone();
-                            full_binding.extend(row_bindings(var_cols, fused_scan.table, row));
-                            self.fused_scan(fused_scan, full_binding)
-                        })
+                    cols.iter()
+                        .map(|fused_scan| self.fused_scan(fused_scan))
                         .reduce(|l, r| l.intersection(&r).copied().collect())
-                        .unwrap_or_default();
-                    set.iter()
+                        .unwrap_or_default()
+                        .iter()
                         .map(|id| {
                             let mut row = row.clone();
                             row.0.push(*id);
@@ -116,7 +128,7 @@ impl RelatedEGraph {
                         .collect::<Set<Row>>()
                 })
                 .filter(|row| {
-                    cross_rules.iter().all(|cs| {
+                    query.constraints.iter().all(|cs| {
                         let Some(lhs) = row.0.get(cs.lhs.0) else {
                             return true;
                         };
@@ -142,19 +154,12 @@ impl RelatedEGraph {
         rows
     }
 
-    fn fused_scan(
-        &self,
-        fused_scan: &FusedScan,
-        mut binding: SmallVec<[(ColumnIndex, Constraint); 4]>,
-    ) -> Set<Id> {
+    fn fused_scan(&self, fused_scan: &FusedScan) -> Set<Value> {
         let table = &self.tables[fused_scan.table];
-        if let Some(cs) = fused_scan.constraints {
-            binding.push((fused_scan.column, cs));
-        }
-        table.fused_scan(&self.union_find, fused_scan.column, &binding)
+        table.fused_scan(&self.union_find, fused_scan.column, &fused_scan.constraints)
     }
 
-    pub fn insert(&mut self, table_id: usize, key: Row, value: Id) {
+    pub fn insert(&mut self, table_id: usize, key: Row, value: Value) {
         let table = &mut self.tables[table_id];
 
         // canonical key
@@ -188,6 +193,11 @@ impl RelatedEGraph {
         table.rows.extend(key.0.iter());
     }
 
+    pub fn union(&mut self, old: Value, new: Value) {
+        let (old, new) = self.union_find.union(old, new).unwrap();
+        self.pending_unions.push((old, new));
+    }
+
     pub fn rebuild(&mut self) {
         while let Some((_parent, child)) = self.pending_unions.pop() {
             // all table
@@ -204,36 +214,14 @@ impl RelatedEGraph {
         }
     }
 
-    pub fn alloc_id(&mut self) -> Id {
+    pub fn alloc_id(&mut self) -> Value {
         let id = self.next_id;
-        self.next_id = Id(id.0 + 1);
+        self.next_id = Value(id.0 + 1);
         id
     }
 }
 
-fn row_bindings(
-    var_cols: &[VarColsScanRule],
-    table: TableId,
-    row: &Row,
-) -> SmallVec<[(ColumnIndex, Constraint); 4]> {
-    row.0
-        .iter()
-        .enumerate()
-        .filter_map(|(i, val)| {
-            var_cols[i].iter().find(|s| s.table == table).map(|s| {
-                (
-                    s.column,
-                    Constraint {
-                        op: Op::Equ,
-                        id: *val,
-                    },
-                )
-            })
-        })
-        .collect()
-}
-
-fn rebuild_table(table: &Table, child: Id, uf: &UnionFind) -> Vec<(Id, Id)> {
+fn rebuild_table(table: &Table, child: Value, uf: &UnionFind) -> Vec<(Value, Value)> {
     let Some(indexs) = table.parents.get(&child) else {
         return Vec::new();
     };
@@ -244,10 +232,10 @@ fn rebuild_table(table: &Table, child: Id, uf: &UnionFind) -> Vec<(Id, Id)> {
         .collect()
 }
 
-fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(Id, Id)> {
+fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(Value, Value)> {
     let row = table.get_all_row(idx);
     // canonicalize
-    let canonical: Box<[Id]> = row.iter().map(|v| uf.find(*v)).collect();
+    let canonical: Box<[Value]> = row.iter().map(|v| uf.find(*v)).collect();
     let key = Row(canonical[..table.arity - 1].to_smallvec());
 
     let existing = table.key_index.get(&key)?;
