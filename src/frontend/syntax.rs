@@ -3,9 +3,9 @@ use core::fmt::Display;
 use alloc::{boxed::Box, string::String};
 
 use crate::{
-    common::{Atom, Name, TableName, TypeName},
+    common::{Atom, Name, Set, TableName, TypeName},
     core::rule,
-    types::{TableDef, TypeDef},
+    types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -42,10 +42,20 @@ pub trait VarExtractor {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Head {
-    Match(FunctionCall),
-    LetEq(Expr, Expr),
-    Guard(Op, Expr, Expr),
+    Match(ConstructorPattern),
+    LetEq(Pattern, Pattern),
+    Guard(Op, Pattern, Pattern),
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Pattern {
+    Wildcard,
+    AtomOrVariable(AtomOrVariable),
+    Constructor(ConstructorPattern),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ConstructorPattern(pub Name, pub Box<[Pattern]>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Op {
@@ -170,7 +180,7 @@ impl FunctionCall {
         let g = &self.0;
         let args = &self.1;
 
-        if paren && ! args.is_empty() {
+        if paren && !args.is_empty() {
             write!(f, "(")?;
         }
 
@@ -180,7 +190,7 @@ impl FunctionCall {
             arg.fmt_internal(f, true)?;
         }
 
-        if paren && ! args.is_empty() {
+        if paren && !args.is_empty() {
             write!(f, ")")?;
         }
 
@@ -203,14 +213,17 @@ impl TryFrom<Expr> for Fact {
     fn try_from(value: Expr) -> Result<Self, Self::Error> {
         match value {
             Expr::AtomOrVariable(AtomOrVariable::Atom(atom)) => Ok(Fact::Atom(atom)),
-            Expr::AtomOrVariable(AtomOrVariable::Variable(_)) => Err("Fact cannot contains variable".into()),
+            Expr::AtomOrVariable(AtomOrVariable::Variable(_)) => {
+                Err("Fact cannot contains variable".into())
+            }
             Expr::FunctionCall(FunctionCall(name, args)) => {
-                let args = args.into_iter()
+                let args = args
+                    .into_iter()
                     .map(Fact::try_from)
                     .collect::<Result<Box<[_]>, _>>()?;
 
                 Ok(Fact::FactConstructor(FactConstructor(name, args)))
-            },
+            }
         }
     }
 }
@@ -220,12 +233,10 @@ impl Into<Expr> for &Fact {
         match self {
             Fact::Atom(atom) => Expr::AtomOrVariable(AtomOrVariable::Atom(atom.clone())),
             Fact::FactConstructor(FactConstructor(name, args)) => {
-                let args = args.iter()
-                    .map(|x| x.into())
-                    .collect::<Box<[Expr]>>();
+                let args = args.iter().map(|x| x.into()).collect::<Box<[Expr]>>();
 
                 Expr::FunctionCall(FunctionCall(name.clone(), args))
-            },
+            }
         }
     }
 }
@@ -253,16 +264,16 @@ impl Display for Body {
                 }
 
                 Ok(())
-            },
+            }
             Body::Union(l, r) => {
                 write!(f, "union ")?;
                 l.fmt_internal(f, true)?;
                 write!(f, " <- ")?;
                 r.fmt_internal(f, true)
-            },
+            }
             Body::Let(name, call) => {
                 write!(f, "let {name} := {call}")
-            },
+            }
         }
     }
 }
@@ -272,8 +283,8 @@ impl Pattern {
         match self {
             Pattern::Wildcard => write!(f, "_"),
             Pattern::AtomOrVariable(aov) => write!(f, "{aov}"),
-            Pattern::Constructor(g, args) => {
-                if paren && ! args.is_empty() {
+            Pattern::Constructor(ConstructorPattern(g, args)) => {
+                if paren && !args.is_empty() {
                     write!(f, "(")?;
                 }
 
@@ -283,13 +294,42 @@ impl Pattern {
                     arg.fmt_internal(f, true)?;
                 }
 
-                if paren && ! args.is_empty() {
+                if paren && !args.is_empty() {
                     write!(f, ")")?;
                 }
 
                 Ok(())
-            },
+            }
         }
+    }
+}
+
+impl ConstructorPattern {
+    fn fmt_internal(&self, f: &mut core::fmt::Formatter<'_>, paren: bool) -> core::fmt::Result {
+        let g = &self.0;
+        let args = &self.1;
+
+        if paren && !args.is_empty() {
+            write!(f, "(")?;
+        }
+
+        write!(f, "{g}");
+        for arg in args {
+            write!(f, " ")?;
+            arg.fmt_internal(f, true)?;
+        }
+
+        if paren && !args.is_empty() {
+            write!(f, ")")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Display for ConstructorPattern {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.fmt_internal(f, false)
     }
 }
 
@@ -323,13 +363,13 @@ impl Display for Head {
                 l.fmt_internal(f, true)?;
                 write!(f, " <- ")?;
                 r.fmt_internal(f, true)
-            },
+            }
             Head::Guard(op, l, r) => {
                 write!(f, "if ")?;
                 l.fmt_internal(f, true)?;
                 write!(f, " {op} ")?;
                 r.fmt_internal(f, true)
-            },
+            }
         }
     }
 }
@@ -393,7 +433,11 @@ impl Display for TypeDef {
 
 impl Display for TableDef {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "table {}", TypeConstructor(self.0.clone(), self.1.clone()))?;
+        write!(
+            f,
+            "table {}",
+            TypeConstructor(self.0.clone(), self.1.clone())
+        )?;
         if let Some(ret) = &self.2 {
             write!(f, " -> {ret}")?;
         }
@@ -427,11 +471,11 @@ impl Display for Command {
                 }
 
                 Ok(())
-            },
+            }
             Command::Fact(fact) => {
                 let expr: Expr = Expr::FunctionCall(fact.clone());
                 write!(f, "fact {expr}")
-            },
+            }
             Command::TableDef(_, def) => write!(f, "{def}"),
             Command::Query(heads) => {
                 write!(f, "query ")?;
@@ -444,7 +488,7 @@ impl Display for Command {
                 }
 
                 Ok(())
-            },
+            }
         }
     }
 }
