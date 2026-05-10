@@ -53,7 +53,7 @@ use crate::types::{BaseType, SumType, TableDef, Type, TypeConstructor, TypeDef};
 //
 // rule = { "rule" ~ heads ~ "=>" ~ bodies }
 
-fn make_app<'a>(func: Expr, arg: Expr) -> Result<Expr, String> {
+fn make_app(func: Expr, arg: Expr) -> Result<Expr, String> {
     match func {
         Expr::AtomOrVariable(AtomOrVariable::Variable(v)) => {
             Ok(Expr::FunctionCall(FunctionCall(v, Box::new([arg]))))
@@ -81,7 +81,7 @@ fn initialize_category<T>() -> Category<T> {
         );
     };
 
-    KEYWORDS.iter().map(|x| *x).for_each(reg_keyword);
+    KEYWORDS.iter().copied().for_each(reg_keyword);
     c
 }
 
@@ -91,7 +91,7 @@ const KEYWORDS: [&str; 24] = [
 ];
 
 const ATOM_LEADINGS: [&str; 6] = ["@ident", "-", "@int", "@str", "true", "false"];
-pub fn build_atom_parser_env<'a>() -> ParserEnv<AtomOrVariable> {
+pub fn build_atom_parser_env() -> ParserEnv<AtomOrVariable> {
     let mut cat = initialize_category::<AtomOrVariable>();
 
     cat.leading.insert(
@@ -187,7 +187,7 @@ const BASE_TYPE_LEADING: [&str; 13] = [
 ];
 pub fn parse_base_type<'a>(ctx: ParserContext<'a>) -> ParserResult<'a, BaseType> {
     let (TokenTree::Token(t), ctx) = ctx.next_token()? else {
-        return Err(format!("Expecting Type"));
+        return Err("Expecting Type".to_string());
     };
 
     let ty = match t.text {
@@ -422,12 +422,12 @@ pub fn parse_body<'a>(ctx: ParserContext<'a>, env: &ParserEnv<Expr>) -> ParserRe
             let (_, ctx) = ctx.expect("<-")?;
             let (arg1, ctx) = ctx.parse(env, "Expr", 0)?;
 
-            Ok((Body::Union(arg0, arg1).into(), ctx))
+            Ok((Body::Union(arg0, arg1), ctx))
         }
         "insert" => {
             let (_, ctx) = ctx.next_token()?;
             let ((call, result), ctx) = parse_insert_like(ctx, env)?;
-            Ok((Body::Insert(call, result).into(), ctx))
+            Ok((Body::Insert(call, result), ctx))
         }
         "let" => {
             let (_, ctx) = ctx.next_token()?;
@@ -446,7 +446,6 @@ pub fn parse_body<'a>(ctx: ParserContext<'a>, env: &ParserEnv<Expr>) -> ParserRe
 
 pub fn parse_heads<'a>(
     mut ctx: ParserContext<'a>,
-    expr_env: &ParserEnv<Expr>,
     pat_env: &ParserEnv<Pattern>,
 ) -> ParserResult<'a, Box<[Head]>> {
     let mut heads = Vec::new();
@@ -520,7 +519,7 @@ pub fn parse_rule<'a>(
     let mut bodies = Vec::new();
 
     // parse head part
-    let (heads, ctx) = parse_heads(ctx, env, pat_env)?;
+    let (heads, ctx) = parse_heads(ctx, pat_env)?;
     let (token, mut ctx) = ctx.next_token()?;
     if let TokenTree::Token(t) = token
         && t.text == "=>"
@@ -549,7 +548,7 @@ pub fn parse_rule<'a>(
 
     Ok((
         Rule {
-            heads: heads.into(),
+            heads,
             bodys: bodies.into(),
         },
         ctx,
@@ -613,7 +612,7 @@ pub fn parse_command<'a>(
             Ok((Command::TableDef(TableName(name), def), ctx))
         }
         "query" => {
-            let (heads, ctx) = parse_heads(ctx, expr_env, pat_env)?;
+            let (heads, ctx) = parse_heads(ctx, pat_env)?;
             Ok((Command::Query(heads), ctx))
         }
         _ => Err(format!("Unknown command: {key}")),
@@ -629,7 +628,7 @@ pub fn parse_commands(line: &str) -> Result<Vec<Command>, String> {
     let pat_env = build_pattern_parser_env(atom_env);
     let mut ctx = ParserContext(&token_trees[..]);
     let mut commands: Vec<Command> = vec![];
-    while let Some(_) = ctx.peek() {
+    while ctx.peek().is_none() {
         let (r, rest) = parse_command(ctx, &expr_env, &pat_env)?;
         ctx = rest;
         commands.push(r);

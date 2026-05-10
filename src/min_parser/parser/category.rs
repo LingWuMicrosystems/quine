@@ -121,10 +121,7 @@ impl<'a> ParserContext<'a> {
                 if t.kind == TokenKind::Ident
                     && !["def", "axiom", "notation"].contains(&t.text) =>
             {
-                Ok((
-                    t.text.to_string(),
-                    ctx,
-                ))
+                Ok((t.text.to_string(), ctx))
             }
             _ => Err(format!("Expected Identifier, found {token:?}")),
         }
@@ -147,10 +144,7 @@ impl<'a> ParserContext<'a> {
     pub fn expect_symbol(self) -> ParserResult<'a, Name> {
         let (token, ctx) = self.next_token()?;
         match token {
-            TokenTree::Token(t) if t.kind == TokenKind::Symbol => Ok((
-                t.text.to_string(),
-                ctx,
-            )),
+            TokenTree::Token(t) if t.kind == TokenKind::Symbol => Ok((t.text.to_string(), ctx)),
             _ => Err(format!("Expected Symbol, found {token:?}")),
         }
     }

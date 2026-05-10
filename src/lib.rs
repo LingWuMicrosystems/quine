@@ -1,5 +1,4 @@
 #![no_std]
-#![feature(portable_simd)]
 
 extern crate alloc;
 
@@ -9,6 +8,6 @@ extern crate std;
 pub mod common;
 pub mod core;
 pub mod frontend;
+pub mod min_parser;
 pub mod types;
 pub mod uf;
-pub mod min_parser;
