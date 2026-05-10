@@ -1,8 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::min_parser::{
-    tokenize::token::{Position, Token},
-};
+use crate::min_parser::tokenize::token::{Position, Token};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroupKind {

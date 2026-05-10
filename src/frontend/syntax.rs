@@ -184,7 +184,7 @@ impl FunctionCall {
             write!(f, "(")?;
         }
 
-        write!(f, "{g}");
+        write!(f, "{g}")?;
         for arg in args {
             write!(f, " ")?;
             arg.fmt_internal(f, true)?;
@@ -228,9 +228,9 @@ impl TryFrom<Expr> for Fact {
     }
 }
 
-impl Into<Expr> for &Fact {
-    fn into(self) -> Expr {
-        match self {
+impl From<&Fact> for Expr {
+    fn from(value: &Fact) -> Self {
+        match value {
             Fact::Atom(atom) => Expr::AtomOrVariable(AtomOrVariable::Atom(atom.clone())),
             Fact::FactConstructor(FactConstructor(name, args)) => {
                 let args = args.iter().map(|x| x.into()).collect::<Box<[Expr]>>();
@@ -288,7 +288,7 @@ impl Pattern {
                     write!(f, "(")?;
                 }
 
-                write!(f, "{g}");
+                write!(f, "{g}")?;
                 for arg in args {
                     write!(f, " ")?;
                     arg.fmt_internal(f, true)?;
@@ -313,7 +313,7 @@ impl ConstructorPattern {
             write!(f, "(")?;
         }
 
-        write!(f, "{g}");
+        write!(f, "{g}")?;
         for arg in args {
             write!(f, " ")?;
             arg.fmt_internal(f, true)?;
@@ -422,7 +422,7 @@ impl Display for TypeConstructor {
 
 impl Display for TypeDef {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "type {}", self.0);
+        writeln!(f, "type {}", self.0)?;
         for con in &self.1.0 {
             writeln!(f, "| {con}")?;
         }
