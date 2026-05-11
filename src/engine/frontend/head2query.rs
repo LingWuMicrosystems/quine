@@ -2,14 +2,17 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::{
-    common::{ColumnIndex, Map, Set, VarId},
-    frontend::{
+    engine::{
         env::TableEnv,
         error::CompileError,
-        syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
+        frontend::syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
     },
-    regraph::rule::{self, Constraint, CrossConstraint, FusedScan, Query, VariableRecord},
-    types::Type,
+    regraph::common::{ColumnIndex, Map, Set, VarId},
+    regraph::types::Type,
+    regraph::{
+        rule::{self, Constraint, CrossConstraint, FusedScan, Query, VariableRecord},
+        types::BaseType,
+    },
 };
 
 pub fn heads2query(heads: &[Head], table_env: &TableEnv) -> Result<Query, CompileError> {
@@ -123,7 +126,7 @@ pub fn heads2query(heads: &[Head], table_env: &TableEnv) -> Result<Query, Compil
             }
             Head::LetEq(pattern, pattern1) => {
                 // FIXME: defined_type
-                let defined_type = Type::Base(crate::types::BaseType::Id);
+                let defined_type = Type::Base(BaseType::Id);
                 let Some(pattern) = check_and_compile_pattern(
                     pattern,
                     &defined_type,
@@ -230,7 +233,7 @@ fn check_and_compile_con_pattern(
             .2
             .as_ref()
             .cloned()
-            .unwrap_or(Type::Base(crate::types::BaseType::Id));
+            .unwrap_or(Type::Base(BaseType::Id));
         let res = variables.insert_var(None, column_type.clone());
         scans.entry(res).or_default().push(FusedScan {
             table: offset,

@@ -3,7 +3,7 @@ use std::{borrow::Cow, fs, path::PathBuf};
 use quine::{
     engine::EngineContext,
     pest_parser::parse_commands,
-    types::{BaseType, Type},
+    regraph::types::{BaseType, Type},
 };
 
 use directories::ProjectDirs;
@@ -78,7 +78,7 @@ fn main() {
                 };
                 let cmds: Result<Vec<_>, _> = cmds
                     .into_iter()
-                    .map(|cmd| engine_context.compile_env.check_and_compile_command(cmd))
+                    .map(|cmd| engine_context.check_and_compile_command(cmd))
                     .collect();
                 let Ok(cmds) = cmds else {
                     eprintln!("error: {:?}", cmds.unwrap_err());

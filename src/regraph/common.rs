@@ -1,7 +1,7 @@
 use alloc::string::String;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::types::BaseType;
+use crate::regraph::types::BaseType;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Value(pub u32);

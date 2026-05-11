@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::common::Name;
+use crate::regraph::common::Name;
 
 // high level types
 

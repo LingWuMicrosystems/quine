@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use crate::{
     regraph::rule::{Action, Query, Rule},
-    types::TableDef,
+    regraph::types::TableDef,
 };
 
 #[derive(Debug, Clone)]

@@ -34,7 +34,7 @@ head = {
 }
 
 constructor_pattern = {
-    "(" ~ variable ~ pattern+ ~ ")"
+    "(" ~ variable ~ pattern+ ~ ")" // FIXME: | variable
 }
 
 pattern = {

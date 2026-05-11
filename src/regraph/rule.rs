@@ -1,10 +1,10 @@
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
-    common::{ColumnIndex, Map, Value, VarId},
-    frontend::syntax::VarName,
+    engine::frontend::syntax::VarName,
+    regraph::common::{ColumnIndex, Map, Value, VarId},
+    regraph::types::Type,
     regraph::{related_egraph::TableId, table::Row},
-    types::Type,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

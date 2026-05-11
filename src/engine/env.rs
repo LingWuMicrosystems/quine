@@ -1,15 +1,34 @@
+use alloc::{borrow::ToOwned, boxed::Box, vec};
 use alloc::{format, vec::Vec};
 
+use crate::regraph::types::Type;
 use crate::{
-    common::{ConstructorName, Map, TableName, TypeName},
-    frontend::error::CompileError,
-    types::{TableDef, TypeDef},
+    engine::error::CompileError,
+    regraph::{
+        common::{ConstructorName, Map, TableName, TypeName},
+        types::{TableDef, TypeDef},
+    },
 };
 
-#[derive(Debug, Default, Clone)]
+pub type CompileEnv = DataTypeEnv;
+
+#[derive(Debug, Clone)]
 pub struct TableEnv {
     pub tables: Vec<TableDef>,
     pub name_map: Map<TableName, usize>,
+}
+
+impl Default for TableEnv {
+    fn default() -> Self {
+        Self {
+            tables: vec![TableDef(
+                "Unit".to_owned(),
+                Box::new([]),
+                Some(Type::Name("Unit".to_owned())),
+            )],
+            name_map: Default::default(),
+        }
+    }
 }
 
 impl TableEnv {

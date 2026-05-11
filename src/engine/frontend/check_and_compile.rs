@@ -1,26 +1,19 @@
 use alloc::format;
 use alloc::vec;
 
-use crate::frontend::body2action::bodys2action;
-use crate::frontend::head2query::heads2query;
+use crate::engine::EngineContext;
+use crate::engine::error::CompileError;
+use crate::engine::frontend::body2action::bodys2action;
+use crate::engine::frontend::head2query::heads2query;
+use crate::regraph::rule;
 use crate::{
     engine::command::BackendCommand,
-    frontend::{
-        env::{DataTypeEnv, TableEnv},
-        error::CompileError,
-        syntax::{self, Command},
-    },
-    regraph::rule::{self, VariableRecord},
-    types::{TableDef, Type},
+    engine::frontend::syntax::{self, Command},
+    regraph::rule::VariableRecord,
+    regraph::types::{TableDef, Type},
 };
 
-#[derive(Debug, Default, Clone)]
-pub struct CompileEnv {
-    pub data_types: DataTypeEnv,
-    pub table_types: TableEnv,
-}
-
-impl CompileEnv {
+impl EngineContext {
     pub fn check_and_compile_command(
         &mut self,
         command: Command,

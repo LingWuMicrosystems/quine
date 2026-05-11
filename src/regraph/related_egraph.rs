@@ -1,21 +1,19 @@
 /// related e-graph
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use smallvec::{ToSmallVec, smallvec};
 
-use crate::{
+use crate::regraph::{
     common::{RowIndex, Set, Value},
-    regraph::{
-        rule::{Action, ActionTail, FunctionCall, FusedScan, Op, Query, Rule},
-        table::{Row, Table},
-    },
+    rule::{Action, ActionTail, FunctionCall, FusedScan, Op, Query, Rule},
+    table::{Row, Table},
     types::TableDef,
     uf::UnionFind,
 };
 
 pub type TableId = usize;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct RelatedEGraph {
     union_find: UnionFind,
 
@@ -25,9 +23,26 @@ pub struct RelatedEGraph {
     pending_unions: Vec<(Value, Value)>,
 }
 
+impl Default for RelatedEGraph {
+    fn default() -> Self {
+        let zero_id = Default::default();
+        let mut tables = vec![Table::new(0)];
+        tables[0].insert_row(Row(smallvec![zero_id]));
+        let mut union_find: UnionFind = Default::default();
+        union_find.add(zero_id);
+        Self {
+            union_find,
+            tables,
+            next_id: Value(1),
+            pending_unions: Default::default(),
+        }
+    }
+}
+
 impl RelatedEGraph {
-    pub fn add_table(&mut self, table_def: &TableDef) {
-        self.tables.push(Table::new(table_def.1.len() + 1));
+    pub fn add_table(&mut self, table_def: TableDef) {
+        // TODO:
+        self.tables.push(Table::new(table_def.1.len()));
     }
 
     pub fn run(&mut self, rules: &[Rule]) {

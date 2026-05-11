@@ -3,7 +3,7 @@ use core::hash::Hash;
 use smallvec::{SmallVec, ToSmallVec};
 
 use crate::{
-    common::{ColumnIndex, Map, RowIndex, Set, Value},
+    regraph::common::{ColumnIndex, Map, RowIndex, Set, Value},
     regraph::rule::{Constraint, Op},
 };
 
@@ -29,7 +29,7 @@ impl Table {
     }
 
     pub fn insert_row(&mut self, row: Row) {
-        debug_assert_eq!(row.0.len(), self.arity);
+        debug_assert_eq!(row.0.len(), self.arity + 1);
         self.rows.extend(row.0);
     }
 
@@ -74,12 +74,12 @@ impl Table {
 
     pub fn get_row(&self, idx: RowIndex) -> Row {
         let start = idx.0 * self.arity;
-        let row = &self.rows[start..start + self.arity - 1];
+        let row = &self.rows[start..start + self.arity];
         Row(row.to_smallvec())
     }
 
     pub fn get_result(&self, idx: RowIndex) -> Value {
         let start = idx.0 * self.arity;
-        self.rows[start + self.arity - 1]
+        self.rows[start + self.arity]
     }
 }

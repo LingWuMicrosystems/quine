@@ -2,16 +2,14 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::{
-    common::{Map, TableName, VarId},
-    frontend::{
-        error::CompileError,
-        syntax::{AtomOrVariable, Body, Expr, FunctionCall},
-    },
+    engine::error::CompileError,
+    engine::frontend::syntax::{AtomOrVariable, Body, Expr, FunctionCall},
+    regraph::common::{Map, TableName, VarId},
+    regraph::types::{BaseType, Type},
     regraph::{
         related_egraph::TableId,
         rule::{self, Action, ActionTail, ValueOrVariable, VariableRecord},
     },
-    types::{BaseType, Type},
 };
 
 pub fn bodys2action(

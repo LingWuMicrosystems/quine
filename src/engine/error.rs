@@ -1,9 +1,9 @@
 use alloc::boxed::Box;
 
 use crate::{
-    common::{Atom, ColumnIndex, TableName, TypeName},
-    frontend::syntax::VarName,
-    types::Type,
+    engine::frontend::syntax::VarName,
+    regraph::common::{Atom, ColumnIndex, TableName, TypeName},
+    regraph::types::Type,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -6,12 +6,12 @@ use alloc::vec::Vec;
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::common::{Atom, Name, TypeName};
-use crate::frontend::syntax::{
+use crate::engine::frontend::syntax::{
     AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Op, Pattern,
     Rule as SyntaxRule,
 };
-use crate::types::{BaseType, SumType, TableDef, Type, TypeConstructor, TypeDef};
+use crate::regraph::common::{Atom, Name, TypeName};
+use crate::regraph::types::{BaseType, SumType, TableDef, Type, TypeConstructor, TypeDef};
 
 #[derive(Parser)]
 #[grammar = "../docs/grammar.pest"]

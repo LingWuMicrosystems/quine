@@ -1,11 +1,18 @@
+pub mod command;
+pub mod env;
+pub mod error;
+pub mod frontend;
+
 use alloc::vec::Vec;
 
 use smallvec::smallvec;
 
+use crate::engine::env::TableEnv;
 use crate::{
-    common::Set,
     engine::command::BackendCommand,
-    frontend::{check_and_compile::CompileEnv, error::CompileError},
+    engine::env::CompileEnv,
+    engine::error::CompileError,
+    regraph::common::Set,
     regraph::{
         related_egraph::RelatedEGraph,
         rule::{Rule, VariableRecord},
@@ -13,11 +20,10 @@ use crate::{
     },
 };
 
-pub mod command;
-
 #[derive(Debug, Default, Clone)]
 pub struct EngineContext {
-    pub compile_env: CompileEnv,
+    pub data_types: CompileEnv,
+    pub table_types: TableEnv,
     pub regraph: RelatedEGraph,
     pub ruleset: Vec<Rule>,
 }
@@ -30,7 +36,7 @@ impl EngineContext {
         match cmd {
             BackendCommand::AddTables(table_defs) => {
                 for table_def in table_defs {
-                    self.regraph.add_table(&table_def);
+                    self.regraph.add_table(table_def);
                 }
                 Ok(None)
             }

@@ -4,9 +4,9 @@ use alloc::vec::Vec;
 use core::fmt::Display;
 
 use crate::{
-    common::{Atom, Name, Set, TableName, TypeName},
+    regraph::common::{Atom, Name, Set, TableName, TypeName},
     regraph::rule,
-    types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
+    regraph::types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
