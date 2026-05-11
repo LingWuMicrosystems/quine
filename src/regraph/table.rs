@@ -4,8 +4,7 @@ use smallvec::{SmallVec, ToSmallVec};
 
 use crate::{
     common::{ColumnIndex, Map, RowIndex, Set, Value},
-    core::rule::{Constraint, Op},
-    uf::UnionFind,
+    regraph::rule::{Constraint, Op},
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
@@ -29,18 +28,17 @@ impl Table {
         }
     }
 
-    pub fn fused_scan(
-        &self,
-        uf: &UnionFind,
-        find_column: ColumnIndex,
-        cs: &[Constraint],
-    ) -> Set<Value> {
+    pub fn insert_row(&mut self, row: Row) {
+        debug_assert_eq!(row.0.len(), self.arity);
+        self.rows.extend(row.0);
+    }
+
+    pub fn fused_scan(&self, find_column: ColumnIndex, cs: &[Constraint]) -> Set<Value> {
         self.rows
             .chunks(self.arity)
-            .map(|row: &[Value]| Row(row.iter().map(|id| uf.find(*id)).collect()))
-            .filter(|row| {
-                cs.iter().all(|constraint| {
-                    let value = row.0[find_column.0];
+            .filter_map(|row| {
+                if cs.iter().all(|constraint| {
+                    let value = row[find_column.0];
                     match constraint.op {
                         Op::Equ => value == constraint.value,
                         Op::Neq => value != constraint.value,
@@ -53,9 +51,12 @@ impl Table {
                         Op::Lequ => value <= constraint.value,
                         Op::Gequ => value >= constraint.value,
                     }
-                })
+                }) {
+                    Some(row[find_column.0])
+                } else {
+                    None
+                }
             })
-            .map(|row| row.0[find_column.0])
             .collect()
     }
 

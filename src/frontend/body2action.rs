@@ -2,14 +2,14 @@ use alloc::vec::Vec;
 
 use crate::{
     common::{Map, TableName, VarId},
-    core::{
-        regraph::TableId,
-        rule::{self, Action, ActionTail, ValueOrVariable, VariableRecord},
-    },
     frontend::{
         error::CompileError,
-        head2flat_clause::NameOrVariable,
+        // head2flat_clause::NameOrVariable,
         syntax::{AtomOrVariable, Body, Expr, FunctionCall, VarName},
+    },
+    regraph::{
+        regraph::TableId,
+        rule::{self, Action, ActionTail, ValueOrVariable, VariableRecord},
     },
 };
 
@@ -19,6 +19,7 @@ pub fn bodys2action(
     var_record: &VariableRecord,
 ) -> Result<Action, CompileError> {
     let mut lets = Vec::default();
+    // TIXME:
     let mut lets_map = Map::default();
     let mut tails = Vec::default();
     for body in bodys {
@@ -28,7 +29,7 @@ pub fn bodys2action(
     }
     let tail = tails.into_boxed_slice();
     Ok(Action {
-        lets_map,
+        // lets_map,
         lets: lets.into_boxed_slice(),
         tail,
     })
@@ -87,9 +88,9 @@ pub fn function_call_transform(
     let r = rule::FunctionCall {
         is_native: false,
         offset: table_map
-            .get(&TableName(call.0.clone()))
+            .get(&call.0)
             .cloned()
-            .ok_or_else(|| CompileError::InvalidTableName(TableName(call.0.clone())))?,
+            .ok_or_else(|| CompileError::InvalidTableName(call.0.clone()))?,
         args,
     };
     Ok(r)
@@ -122,23 +123,13 @@ fn atom_or_variable_transform(
     match a {
         AtomOrVariable::Atom(a) => Ok(ValueOrVariable::Value(a.clone().to_value())),
         AtomOrVariable::Variable(v) => {
-            let id = var_record
-                .iter()
-                .enumerate()
-                .find_map(|(offset, (_, var))| {
-                    if let Some(id) = var
-                        && id == v
-                    {
-                        Some(VarId(offset))
-                    } else {
-                        None
-                    }
-                })
-                .or_else(|| lets_map.get(v).cloned())
-                .ok_or_else(|| {
-                    CompileError::InvalidVariableName(NameOrVariable::Name(v.clone()))
-                })?;
-            Ok(ValueOrVariable::Variable(id))
+            if let Some(offset) = var_record.get_offset(v) {
+                Ok(ValueOrVariable::Variable(VarId(offset)))
+            } else if let Some(id) = lets_map.get(v) {
+                Ok(ValueOrVariable::Variable(*id))
+            } else {
+                Err(CompileError::VariableNotDefine(v.clone()))
+            }
         }
     }
 }

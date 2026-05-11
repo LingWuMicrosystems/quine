@@ -1,0 +1,138 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "==" | "=>" | "!=" | "<" | ">" | "<=" | ">=" }
+
+command = {
+    type_def | relation_def | function_def | rule | fact | query
+}
+
+rule = {
+    "rule" ~ heads ~ "->" ~ bodies ~ ";"
+}
+
+fact = { "fact" ~ function_call ~ ";" }
+
+query = { "query" ~ heads ~ ";" }
+
+heads = {
+    head ~ ("," ~ head)*
+}
+
+bodies = {
+    body ~ ("," ~ body)*
+}
+
+head = {
+    constructor_pattern | leteq | guard
+}
+
+constructor_pattern = {
+    "(" ~ variable ~ pattern+ ~ ")"
+}
+
+pattern = {
+    constructor_pattern | atom | variable | "_"
+}
+
+leteq = {
+    "leteq" ~ variable ~ "=" ~ pattern
+}
+
+guard = {
+    "if" ~ variable ~ op ~ atom_or_variable
+}
+
+op = @{
+    "==" | "!=" | "<" | ">" | "<=" | ">="
+}
+
+atom_or_variable = {
+    atom | variable
+}
+
+body = {
+    let_ | insert | union
+}
+
+let_ = {
+    "let" ~ variable ~ "=" ~ function_call
+}
+
+insert = {
+    "set" ~  function_call
+}
+
+union = {
+    "union" ~ expr ~ "with" ~ expr
+}
+
+expr = {
+	function_call | atom_or_variable
+}
+
+function_call = { "(" ~ variable ~ expr+ ~ ")" }
+
+type_def = {
+    "data" ~ variable ~ ("|" ~ type_constructor)+
+}
+
+relation_def = {
+    "relation" ~ variable ~ "(" ~ type+ ~ ")"
+}
+
+function_def = {
+    "function" ~ variable ~ "(" ~ type* ~ ")" ~ "->" ~ type
+}
+
+type_constructor = {
+    variable ~ ("(" ~ type+ ~ ")")?
+}
+
+type = {
+    base_type | variable
+}
+
+base_type =
+    { "bool"
+    | "i8"
+    | "i16"
+    | "i32"
+    | "i64"
+    | "u8"
+    | "u16"
+    | "u32"
+    | "u64"
+    | "f32"
+    | "f64"
+    | "string"
+}
+
+variable = @{ (!(KEYWORD | WHITESPACE | "," | ";" | "(" | ")" | "[" | "]" | "{" | "}") ~ ANY)+ }
+
+atom = { boolean
+    | int8
+    | int16
+    | int32
+    | int64
+    | uint8
+    | uint16
+    | uint32
+    | uint64
+    | string }
+
+boolean = { "true" | "false" }
+int8 = @{ integer ~ "i8" }
+int16 = @{ integer ~ "i16" }
+int32 = @{ integer ~ "i32" }
+int64 = @{ integer ~ "i64" }
+uint8 = @{ integer ~ "u8" }
+uint16 = @{ integer ~ "u16" }
+uint32 = @{ integer ~ "u32" }
+uint64 = @{ integer ~ "u64" }
+integer = @{ ("+" | "-")? ~ ASCII_DIGIT+ }
+
+f32 = @{ ("+" | "-")? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ ~ "f32" }
+f64 = @{ ("+" | "-")? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ ~ "f64" }
+
+string = ${ "\"" ~ inner ~ "\"" }
+inner  = @{ (!"\"" ~ ANY)* }

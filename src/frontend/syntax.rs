@@ -1,10 +1,10 @@
 use core::fmt::Display;
 
-use alloc::{boxed::Box, string::String};
+use alloc::boxed::Box;
 
 use crate::{
     common::{Atom, Name, Set, TableName, TypeName},
-    core::rule,
+    regraph::rule,
     types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
 };
 
@@ -16,15 +16,6 @@ pub enum Command {
     Fact(FunctionCall),
     // repl only
     Query(Heads),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FactConstructor(pub Name, Box<[Fact]>);
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Fact {
-    Atom(Atom),
-    FactConstructor(FactConstructor),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -44,13 +35,14 @@ pub trait VarExtractor {
 pub enum Head {
     Match(ConstructorPattern),
     LetEq(Pattern, Pattern),
-    Guard(Op, Pattern, Pattern),
+    Guard(Op, VarName, AtomOrVariable),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Pattern {
     Wildcard,
-    AtomOrVariable(AtomOrVariable),
+    Atom(Atom),
+    Variable(VarName),
     Constructor(ConstructorPattern),
 }
 
@@ -158,8 +150,14 @@ pub type VarName = Name;
 impl Display for Atom {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Atom::Int(i) => write!(f, "{i}i"),
-            Atom::Uint(u) => write!(f, "{u}u"),
+            Atom::I8(i) => write!(f, "{i}i8"),
+            Atom::I16(i) => write!(f, "{i}i16"),
+            Atom::I32(i) => write!(f, "{i}i32"),
+            Atom::U8(u) => write!(f, "{u}u8"),
+            Atom::U16(u) => write!(f, "{u}u16"),
+            Atom::U32(u) => write!(f, "{u}u32"),
+            Atom::I64(i) => write!(f, "{i}i64"),
+            Atom::U64(u) => write!(f, "{u}u64"),
             Atom::Bool(b) => write!(f, "{b}"),
             Atom::Str(s) => write!(f, "\"{}\"", s.escape_debug()),
         }
@@ -207,40 +205,6 @@ impl Expr {
     }
 }
 
-impl TryFrom<Expr> for Fact {
-    type Error = String;
-
-    fn try_from(value: Expr) -> Result<Self, Self::Error> {
-        match value {
-            Expr::AtomOrVariable(AtomOrVariable::Atom(atom)) => Ok(Fact::Atom(atom)),
-            Expr::AtomOrVariable(AtomOrVariable::Variable(_)) => {
-                Err("Fact cannot contains variable".into())
-            }
-            Expr::FunctionCall(FunctionCall(name, args)) => {
-                let args = args
-                    .into_iter()
-                    .map(Fact::try_from)
-                    .collect::<Result<Box<[_]>, _>>()?;
-
-                Ok(Fact::FactConstructor(FactConstructor(name, args)))
-            }
-        }
-    }
-}
-
-impl From<&Fact> for Expr {
-    fn from(value: &Fact) -> Self {
-        match value {
-            Fact::Atom(atom) => Expr::AtomOrVariable(AtomOrVariable::Atom(atom.clone())),
-            Fact::FactConstructor(FactConstructor(name, args)) => {
-                let args = args.iter().map(|x| x.into()).collect::<Box<[Expr]>>();
-
-                Expr::FunctionCall(FunctionCall(name.clone(), args))
-            }
-        }
-    }
-}
-
 impl Display for FunctionCall {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.fmt_internal(f, false)
@@ -282,7 +246,8 @@ impl Pattern {
     fn fmt_internal(&self, f: &mut core::fmt::Formatter<'_>, paren: bool) -> core::fmt::Result {
         match self {
             Pattern::Wildcard => write!(f, "_"),
-            Pattern::AtomOrVariable(aov) => write!(f, "{aov}"),
+            Pattern::Atom(a) => write!(f, "{a}"),
+            Pattern::Variable(v) => write!(f, "{v}"),
             Pattern::Constructor(ConstructorPattern(g, args)) => {
                 if paren && !args.is_empty() {
                     write!(f, "(")?;
@@ -365,10 +330,9 @@ impl Display for Head {
                 r.fmt_internal(f, true)
             }
             Head::Guard(op, l, r) => {
-                write!(f, "if ")?;
-                l.fmt_internal(f, true)?;
-                write!(f, " {op} ")?;
-                r.fmt_internal(f, true)
+                write!(f, "if {}", l)?;
+                write!(f, " {op} {}", r)?;
+                Ok(())
             }
         }
     }

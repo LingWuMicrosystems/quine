@@ -25,13 +25,8 @@ pub enum Type {
 
 impl Type {
     pub fn is_sign(&self) -> bool {
-        matches!(
-            self,
-            Type::Base(BaseType::I8)
-                | Type::Base(BaseType::I16)
-                | Type::Base(BaseType::I32)
-                | Type::Base(BaseType::I64)
-        )
+        let Type::Base(base) = self else { return false };
+        base.is_sign()
     }
 }
 
@@ -61,4 +56,13 @@ pub enum BaseType {
     U64,
     F64,
     Str,
+}
+
+impl BaseType {
+    pub fn is_sign(&self) -> bool {
+        matches!(
+            self,
+            BaseType::I8 | BaseType::I16 | BaseType::I32 | BaseType::I64
+        )
+    }
 }

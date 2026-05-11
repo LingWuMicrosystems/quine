@@ -1,3 +1,5 @@
+use std::dbg;
+
 /// related e-graph
 use alloc::{boxed::Box, vec::Vec};
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -5,10 +7,11 @@ use smallvec::{ToSmallVec, smallvec};
 
 use crate::{
     common::{RowIndex, Set, Value},
-    core::{
+    regraph::{
         rule::{Action, ActionTail, FunctionCall, FusedScan, Op, Query, Rule},
         table::{Row, Table},
     },
+    types::TableDef,
     uf::UnionFind,
 };
 
@@ -24,14 +27,14 @@ pub struct RelatedEGraph {
     pending_unions: Vec<(Value, Value)>,
 }
 
-pub enum Subset {
-    All,
-    Since,
-}
-
 impl RelatedEGraph {
+    pub fn add_table(&mut self, table_def: &TableDef) {
+        self.tables.push(Table::new(
+            table_def.1.len() + table_def.2.is_some() as usize,
+        ));
+    }
+
     pub fn run(&mut self, rules: &[Rule]) {
-        // TODO: need scheduler
         let mut dirty = false;
         loop {
             for rule in rules {
@@ -54,9 +57,9 @@ impl RelatedEGraph {
         true
     }
 
-    pub fn apply_action(&mut self, actions: &Action, rows: Set<Row>) {
+    pub fn apply_action(&mut self, action: &Action, rows: Set<Row>) {
         for row in rows.into_iter() {
-            self.apply_action_in_row(actions, row);
+            self.apply_action_in_row(action, row);
         }
     }
 
@@ -155,19 +158,15 @@ impl RelatedEGraph {
     }
 
     fn fused_scan(&self, fused_scan: &FusedScan) -> Set<Value> {
+        dbg!(fused_scan);
         let table = &self.tables[fused_scan.table];
-        table.fused_scan(&self.union_find, fused_scan.column, &fused_scan.constraints)
+        dbg!(table.fused_scan(fused_scan.column, &fused_scan.constraints))
     }
 
-    pub fn insert(&mut self, table_id: usize, key: Row, value: Value) {
+    pub fn insert(&mut self, table_id: usize, mut key: Row, value: Value) {
         let table = &mut self.tables[table_id];
 
         // canonical key
-        let mut key = Row(key
-            .0
-            .into_iter()
-            .map(|v| self.union_find.find_compress(v))
-            .collect());
         let value = self.union_find.find_compress(value);
 
         debug_assert_eq!(key.0.len(), table.arity - 1);
@@ -181,6 +180,12 @@ impl RelatedEGraph {
         let row_idx = RowIndex(table.rows.len() / table.arity);
 
         // insert forward find table
+        if let Some(r) = table.key_index.get(&key) {
+            if let Some(r) = self.union_find.union(table.get_result(*r), value) {
+                self.pending_unions.push(r);
+            }
+            return;
+        }
         table.key_index.insert(key.clone(), row_idx);
         // insert backward find table
         for v in &key.0 {
