@@ -20,13 +20,15 @@ impl EngineContext {
     ) -> Result<BackendCommand, CompileError> {
         match command {
             Command::TypeDef(name, type_def) => {
+                let mut r = vec![];
                 for cons in &type_def.1.0 {
-                    let cons_name = format!("{}.{}", name.0, cons.0);
-                    self.table_types
-                        .insert(cons_name.clone(), TableDef(cons_name, cons.1.clone(), None))?;
+                    let table_name = format!("{}.{}", name.0, cons.0);
+                    let table_def = TableDef(table_name.clone(), cons.1.clone(), None);
+                    self.table_types.insert(table_name, table_def.clone())?;
+                    r.push(table_def);
                 }
                 self.data_types.insert(name.clone(), type_def)?;
-                Ok(BackendCommand::AddTables(vec![]))
+                Ok(BackendCommand::AddTables(r))
             }
             Command::TableDef(name, table_def) => {
                 let table_def = TableDef(

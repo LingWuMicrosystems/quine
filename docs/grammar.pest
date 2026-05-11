@@ -34,13 +34,13 @@ head = {
 }
 
 constructor_pattern = {
-    "(" ~ variable ~ pattern+ ~ ")" // FIXME: | variable
+    "(" ~ variable ~ pattern* ~ ")"
 }
 
 pattern = {
-    constructor_pattern
-  | atom
+    atom
   | variable
+  | constructor_pattern
   | "_"
 }
 
@@ -89,7 +89,7 @@ expr = {
   | atom_or_variable
 }
 
-function_call = { "(" ~ variable ~ expr+ ~ ")" }
+function_call = { "(" ~ variable ~ expr* ~ ")" }
 
 type_def = {
     "data" ~ variable ~ ("|" ~ type_constructor)+
@@ -127,7 +127,7 @@ base_type = {
   | "string"
 }
 
-variable = @{ (!(KEYWORD | WHITESPACE | "," | ";" | "(" | ")" | "[" | "]" | "{" | "}") ~ ANY)+ }
+variable = @{ (!(KEYWORD | WHITESPACE | "_" | "," | ";" | "(" | ")" | "[" | "]" | "{" | "}") ~ ANY)+ }
 
 atom = {
     boolean

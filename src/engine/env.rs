@@ -1,7 +1,6 @@
 use alloc::{borrow::ToOwned, boxed::Box, vec};
 use alloc::{format, vec::Vec};
 
-use crate::regraph::types::Type;
 use crate::{
     engine::error::CompileError,
     regraph::{
@@ -20,14 +19,10 @@ pub struct TableEnv {
 
 impl Default for TableEnv {
     fn default() -> Self {
-        Self {
-            tables: vec![TableDef(
-                "Unit".to_owned(),
-                Box::new([]),
-                Some(Type::Name("Unit".to_owned())),
-            )],
-            name_map: Default::default(),
-        }
+        let mut name_map: Map<TableName, usize> = Default::default();
+        let tables = vec![TableDef("Unit".to_owned(), Box::new([]), None)];
+        name_map.insert("Unit".to_owned(), 0);
+        Self { tables, name_map }
     }
 }
 
@@ -36,6 +31,11 @@ impl TableEnv {
         let offset = self.tables.len();
         if self.name_map.contains_key(&name) {
             return Err(CompileError::DuplicateTableName(name));
+        }
+        // is unit table
+        if def.1.is_empty() && def.2.is_none() {
+            self.name_map.insert(name, 0);
+            return Ok(());
         }
         self.tables.push(def.clone());
         self.name_map.insert(name, offset);

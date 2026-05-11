@@ -3,6 +3,8 @@ pub mod env;
 pub mod error;
 pub mod frontend;
 
+use std::dbg;
+
 use alloc::vec::Vec;
 
 use smallvec::smallvec;
@@ -35,6 +37,7 @@ impl EngineContext {
     ) -> Result<Option<(VariableRecord, Set<Row>)>, CompileError> {
         match cmd {
             BackendCommand::AddTables(table_defs) => {
+                dbg!(&table_defs);
                 for table_def in table_defs {
                     self.regraph.add_table(table_def);
                 }

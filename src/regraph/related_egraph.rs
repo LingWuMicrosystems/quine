@@ -1,3 +1,5 @@
+use std::dbg;
+
 /// related e-graph
 use alloc::{boxed::Box, vec, vec::Vec};
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -179,7 +181,7 @@ impl RelatedEGraph {
         // canonical value
         // let value = self.union_find.find_compress(value);
 
-        debug_assert_eq!(key.0.len(), table.arity - 1);
+        debug_assert_eq!(key.0.len(), table.arity);
         if let Some(row_idx) = table.key_index.get(&key) {
             if let Some(r) = self.union_find.union(table.get_result(*row_idx), value) {
                 self.pending_unions.push(r);
@@ -187,7 +189,7 @@ impl RelatedEGraph {
             return;
         }
 
-        let row_idx = RowIndex(table.rows.len() / table.arity);
+        let row_idx = RowIndex(table.rows.len());
 
         // insert forward find table
         if let Some(r) = table.key_index.get(&key) {
