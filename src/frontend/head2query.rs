@@ -230,7 +230,7 @@ fn check_and_compile_con_pattern(
             .2
             .as_ref()
             .cloned()
-            .unwrap_or_else(|| Type::Base(crate::types::BaseType::Id));
+            .unwrap_or(Type::Base(crate::types::BaseType::Id));
         let res = variables.insert_var(None, column_type.clone());
         scans.entry(res).or_default().push(FusedScan {
             table: offset,

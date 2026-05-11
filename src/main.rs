@@ -91,9 +91,8 @@ fn main() {
                         continue;
                     };
                     if let Some((var_record, rows)) = result {
-                        println!("{:?}", var_record);
                         for row in rows {
-                            while let Some((name, offset)) = var_record.names_map.iter().next() {
+                            for (name, offset) in &var_record.names_map {
                                 let ty = var_record.get_type(*offset).unwrap();
                                 let value = row.0.get(*offset).unwrap();
                                 let value = match ty {
@@ -111,15 +110,15 @@ fn main() {
                                         BaseType::I16 => (value.0 as i16).to_string(),
                                         BaseType::U16 => (value.0 as u16).to_string(),
                                         BaseType::I32 => (value.0 as i32).to_string(),
-                                        BaseType::U32 => (value.0 as u32).to_string(),
+                                        BaseType::U32 => value.0.to_string(),
                                         BaseType::F32 => (value.0 as f32).to_string(),
                                         _ => unimplemented!(),
                                     },
                                     Type::Name(_) => todo!(),
                                 };
-                                println!("{name}: {value}\t");
+                                print!("{name}: {value}\t");
                             }
-                            println!("");
+                            println!();
                         }
                     }
                 }

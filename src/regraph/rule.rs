@@ -3,7 +3,7 @@ use alloc::{boxed::Box, vec::Vec};
 use crate::{
     common::{ColumnIndex, Map, Value, VarId},
     frontend::syntax::VarName,
-    regraph::{regraph::TableId, table::Row},
+    regraph::{related_egraph::TableId, table::Row},
     types::Type,
 };
 

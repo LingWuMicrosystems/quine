@@ -1,6 +1,7 @@
-use core::fmt::Display;
-
 use alloc::boxed::Box;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use core::fmt::Display;
 
 use crate::{
     common::{Atom, Name, Set, TableName, TypeName},
@@ -13,7 +14,7 @@ pub enum Command {
     TypeDef(TypeName, TypeDef),
     TableDef(TableName, TableDef),
     Rule(Rule),
-    Fact(FunctionCall),
+    Fact(Bodys),
     // repl only
     Query(Heads),
 }
@@ -221,10 +222,10 @@ impl Display for Body {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Body::Insert(call, expr) => {
-                write!(f, "insert {call}")?;
+                write!(f, "set {call}")?;
 
                 if let Some(expr) = expr {
-                    write!(f, " -> {expr}")?;
+                    write!(f, " = {expr}")?;
                 }
 
                 Ok(())
@@ -232,11 +233,11 @@ impl Display for Body {
             Body::Union(l, r) => {
                 write!(f, "union ")?;
                 l.fmt_internal(f, true)?;
-                write!(f, " <- ")?;
+                write!(f, " with ")?;
                 r.fmt_internal(f, true)
             }
             Body::Let(name, call) => {
-                write!(f, "let {name} := {call}")
+                write!(f, "let {name} = {call}")
             }
         }
     }
@@ -437,8 +438,14 @@ impl Display for Command {
                 Ok(())
             }
             Command::Fact(fact) => {
-                let expr: Expr = Expr::FunctionCall(fact.clone());
-                write!(f, "fact {expr}")
+                write!(
+                    f,
+                    "fact {}",
+                    fact.iter()
+                        .map(|b| b.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
             }
             Command::TableDef(_, def) => write!(f, "{def}"),
             Command::Query(heads) => {

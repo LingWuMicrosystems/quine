@@ -1,5 +1,3 @@
-use std::dbg;
-
 use alloc::vec::Vec;
 
 use smallvec::smallvec;
@@ -9,7 +7,7 @@ use crate::{
     engine::command::BackendCommand,
     frontend::{check_and_compile::CompileEnv, error::CompileError},
     regraph::{
-        regraph::RelatedEGraph,
+        related_egraph::RelatedEGraph,
         rule::{Rule, VariableRecord},
         table::Row,
     },
@@ -41,9 +39,8 @@ impl EngineContext {
                 Ok(None)
             }
             BackendCommand::Action(action) => {
-                dbg!(&action);
                 self.regraph
-                    .apply_action(&action, Set::from_iter([Row(smallvec![])].into_iter()));
+                    .apply_action(&action, Set::from_iter([Row(smallvec![])]));
                 Ok(None)
             }
             BackendCommand::Query(query) => {

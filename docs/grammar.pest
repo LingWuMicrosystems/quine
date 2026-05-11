@@ -3,14 +3,19 @@ WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "==" | "=>" | "!=" | "<" | ">" | "<=" | ">=" }
 
 command = {
-    type_def | relation_def | function_def | rule | fact | query
+    type_def
+  | relation_def
+  | function_def
+  | rule
+  | fact
+  | query
 }
 
 rule = {
     "rule" ~ heads ~ "->" ~ bodies ~ ";"
 }
 
-fact = { "fact" ~ function_call ~ ";" }
+fact = { "fact" ~ bodies ~ ";" }
 
 query = { "query" ~ heads ~ ";" }
 
@@ -23,7 +28,9 @@ bodies = {
 }
 
 head = {
-    constructor_pattern | leteq | guard
+    constructor_pattern
+  | leteq
+  | guard
 }
 
 constructor_pattern = {
@@ -31,7 +38,10 @@ constructor_pattern = {
 }
 
 pattern = {
-    constructor_pattern | atom | variable | "_"
+    constructor_pattern
+  | atom
+  | variable
+  | "_"
 }
 
 leteq = {
@@ -43,15 +53,23 @@ guard = {
 }
 
 op = @{
-    "==" | "!=" | "<" | ">" | "<=" | ">="
+    "=="
+  | "!="
+  | "<"
+  | ">"
+  | "<="
+  | ">="
 }
 
 atom_or_variable = {
-    atom | variable
+    atom
+  | variable
 }
 
 body = {
-    let_ | insert | union
+    let_
+  | insert
+  | union
 }
 
 let_ = {
@@ -59,7 +77,7 @@ let_ = {
 }
 
 insert = {
-    "set" ~  function_call
+    "set" ~ function_call
 }
 
 union = {
@@ -67,7 +85,8 @@ union = {
 }
 
 expr = {
-	function_call | atom_or_variable
+    function_call
+  | atom_or_variable
 }
 
 function_call = { "(" ~ variable ~ expr+ ~ ")" }
@@ -89,46 +108,49 @@ type_constructor = {
 }
 
 type = {
-    base_type | variable
+    base_type
+  | variable
 }
 
-base_type =
-    { "bool"
-    | "i8"
-    | "i16"
-    | "i32"
-    | "i64"
-    | "u8"
-    | "u16"
-    | "u32"
-    | "u64"
-    | "f32"
-    | "f64"
-    | "string"
+base_type = {
+    "bool"
+  | "i8"
+  | "i16"
+  | "i32"
+  | "i64"
+  | "u8"
+  | "u16"
+  | "u32"
+  | "u64"
+  | "f32"
+  | "f64"
+  | "string"
 }
 
 variable = @{ (!(KEYWORD | WHITESPACE | "," | ";" | "(" | ")" | "[" | "]" | "{" | "}") ~ ANY)+ }
 
-atom = { boolean
-    | int8
-    | int16
-    | int32
-    | int64
-    | uint8
-    | uint16
-    | uint32
-    | uint64
-    | string }
+atom = {
+    boolean
+  | int8
+  | int16
+  | int32
+  | int64
+  | uint8
+  | uint16
+  | uint32
+  | uint64
+  | string
+}
 
-boolean = { "true" | "false" }
-int8 = @{ integer ~ "i8" }
-int16 = @{ integer ~ "i16" }
-int32 = @{ integer ~ "i32" }
-int64 = @{ integer ~ "i64" }
-uint8 = @{ integer ~ "u8" }
-uint16 = @{ integer ~ "u16" }
-uint32 = @{ integer ~ "u32" }
-uint64 = @{ integer ~ "u64" }
+boolean =  { "true" | "false" }
+int8    = @{ integer ~ "i8" }
+int16   = @{ integer ~ "i16" }
+int32   = @{ integer ~ "i32" }
+int64   = @{ integer ~ "i64" }
+uint8   = @{ integer ~ "u8" }
+uint16  = @{ integer ~ "u16" }
+uint32  = @{ integer ~ "u32" }
+uint64  = @{ integer ~ "u64" }
 integer = @{ ("+" | "-")? ~ ASCII_DIGIT+ }
 
 f32 = @{ ("+" | "-")? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ ~ "f32" }

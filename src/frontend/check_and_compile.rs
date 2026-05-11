@@ -1,11 +1,9 @@
-use alloc::vec::Vec;
-use alloc::{boxed::Box, vec};
+use alloc::format;
+use alloc::vec;
 
-use crate::frontend::body2action::{bodys2action, function_call_transform};
+use crate::frontend::body2action::bodys2action;
 use crate::frontend::head2query::heads2query;
-use crate::regraph::rule::Action;
 use crate::{
-    common::Map,
     engine::command::BackendCommand,
     frontend::{
         env::{DataTypeEnv, TableEnv},
@@ -29,8 +27,12 @@ impl CompileEnv {
     ) -> Result<BackendCommand, CompileError> {
         match command {
             Command::TypeDef(name, type_def) => {
-                self.data_types.insert(name, type_def)?;
-                // todo
+                for cons in &type_def.1.0 {
+                    let cons_name = format!("{}.{}", name.0, cons.0);
+                    self.table_types
+                        .insert(cons_name.clone(), TableDef(cons_name, cons.1.clone(), None))?;
+                }
+                self.data_types.insert(name.clone(), type_def)?;
                 Ok(BackendCommand::AddTables(vec![]))
             }
             Command::TableDef(name, table_def) => {
@@ -43,21 +45,11 @@ impl CompileEnv {
                 Ok(BackendCommand::AddTables(vec![table_def]))
             }
             Command::Rule(rule) => Ok(BackendCommand::AddRule(self.check_and_compile_rule(&rule)?)),
-            Command::Fact(fact) => {
-                let mut lets = Vec::default();
-                let _call = function_call_transform(
-                    &fact,
-                    &self.table_types.name_map,
-                    &VariableRecord::default(),
-                    &mut lets,
-                    &Map::default(),
-                )?;
-                let lets = lets.into_boxed_slice();
-                Ok(BackendCommand::Action(Action {
-                    lets,
-                    tail: Box::new([]),
-                }))
-            }
+            Command::Fact(fact) => Ok(BackendCommand::Action(bodys2action(
+                &fact,
+                &self.table_types.name_map,
+                &VariableRecord::default(),
+            )?)),
             Command::Query(head) => Ok(BackendCommand::Query(heads2query(
                 &head,
                 &self.table_types,

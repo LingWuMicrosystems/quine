@@ -1,5 +1,3 @@
-use std::dbg;
-
 /// related e-graph
 use alloc::{boxed::Box, vec::Vec};
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -29,9 +27,7 @@ pub struct RelatedEGraph {
 
 impl RelatedEGraph {
     pub fn add_table(&mut self, table_def: &TableDef) {
-        self.tables.push(Table::new(
-            table_def.1.len() + table_def.2.is_some() as usize,
-        ));
+        self.tables.push(Table::new(table_def.1.len() + 1));
     }
 
     pub fn run(&mut self, rules: &[Rule]) {
@@ -158,16 +154,15 @@ impl RelatedEGraph {
     }
 
     fn fused_scan(&self, fused_scan: &FusedScan) -> Set<Value> {
-        dbg!(fused_scan);
         let table = &self.tables[fused_scan.table];
-        dbg!(table.fused_scan(fused_scan.column, &fused_scan.constraints))
+        table.fused_scan(fused_scan.column, &fused_scan.constraints)
     }
 
     pub fn insert(&mut self, table_id: usize, mut key: Row, value: Value) {
         let table = &mut self.tables[table_id];
 
-        // canonical key
-        let value = self.union_find.find_compress(value);
+        // canonical value
+        // let value = self.union_find.find_compress(value);
 
         debug_assert_eq!(key.0.len(), table.arity - 1);
         if let Some(row_idx) = table.key_index.get(&key) {

@@ -234,8 +234,8 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             Command::Rule(SyntaxRule { heads, bodys })
         }
         Rule::fact => {
-            let call = parse_function_call(inner.into_inner().next().unwrap());
-            Command::Fact(call)
+            let bodie = parse_bodies(inner.into_inner().next().unwrap());
+            Command::Fact(bodie)
         }
         Rule::query => {
             let heads = parse_heads(inner.into_inner().next().unwrap());
