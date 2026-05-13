@@ -2,7 +2,7 @@ use core::mem::swap;
 
 use alloc::vec::Vec;
 
-use crate::common::Value;
+use crate::regraph::common::Value;
 
 #[derive(Debug, Default, Clone)]
 pub struct UnionFind {
@@ -10,6 +10,10 @@ pub struct UnionFind {
 }
 
 impl UnionFind {
+    pub fn add(&mut self, id: Value) {
+        self.parents.push(id);
+    }
+
     /// non compressed find
     pub fn find(&self, id: Value) -> Value {
         let mut cur = id;

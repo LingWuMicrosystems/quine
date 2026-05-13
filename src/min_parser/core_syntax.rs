@@ -6,7 +6,7 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::common::{Atom, TableName, TypeName};
+use crate::common::{Atom, TypeName};
 use crate::frontend::syntax::{
     AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Op, Pattern, Rule,
 };
@@ -121,9 +121,9 @@ pub fn build_atom_parser_env() -> ParserEnv<AtomOrVariable> {
             if is_neg {
                 let num = i64::try_from(num).map_err(|_| "Invalid integer")?;
                 let num = -num; // never overflow, since num is always positive
-                Ok((AtomOrVariable::Atom(Atom::Int(num)), ctx))
+                Ok((AtomOrVariable::Atom(Atom::I64(num)), ctx))
             } else {
-                Ok((AtomOrVariable::Atom(Atom::Uint(num)), ctx))
+                Ok((AtomOrVariable::Atom(Atom::U64(num)), ctx))
             }
         })
     };
@@ -326,8 +326,11 @@ pub fn build_pattern_parser_env(atom: Rc<ParserEnv<AtomOrVariable>>) -> ParserEn
         cat.leading.insert(
             lead.to_string(),
             Rc::new(move |ctx, _| {
-                let (atom, ctx) = ctx.parse(&atom, "Atom", 0)?;
-                Ok((Pattern::AtomOrVariable(atom), ctx))
+                let (aov, ctx) = ctx.parse(&atom, "Atom", 0)?;
+                match aov {
+                    AtomOrVariable::Atom(atom) => Ok((Pattern::Atom(atom), ctx)),
+                    AtomOrVariable::Variable(name) => Ok((Pattern::Variable(name), ctx)),
+                }
             }),
         );
     }
@@ -355,10 +358,10 @@ pub fn build_pattern_parser_env(atom: Rc<ParserEnv<AtomOrVariable>>) -> ParserEn
     let explicit_app: Rc<TrailingParserFn<Pattern>> = Rc::new(|ctx, env, left, bp| {
         let (arg_pat, ctx) = ctx.parse(env, "Pattern", bp)?;
         let p = match left {
-            Pattern::Wildcard | Pattern::AtomOrVariable(AtomOrVariable::Atom(_)) => {
+            Pattern::Wildcard | Pattern::Atom(_) => {
                 return Err("Unexpected pattern".into());
             }
-            Pattern::AtomOrVariable(AtomOrVariable::Variable(v)) => {
+            Pattern::Variable(v) => {
                 Pattern::Constructor(ConstructorPattern(v, Box::new([arg_pat])))
             }
             Pattern::Constructor(ConstructorPattern(f, patterns)) => {
@@ -447,6 +450,7 @@ pub fn parse_body<'a>(ctx: ParserContext<'a>, env: &ParserEnv<Expr>) -> ParserRe
 pub fn parse_heads<'a>(
     mut ctx: ParserContext<'a>,
     pat_env: &ParserEnv<Pattern>,
+    atom_env: &ParserEnv<AtomOrVariable>,
 ) -> ParserResult<'a, Box<[Head]>> {
     let mut heads = Vec::new();
 
@@ -462,15 +466,19 @@ pub fn parse_heads<'a>(
                 (_, ctx) = ctx.next_token()?;
                 let (l, mctx) = ctx.parse(pat_env, "Pattern", 0)?;
                 let (t, mctx) = mctx.next_token()?;
-                let (r, mctx) = mctx.parse(pat_env, "Pattern", 0)?;
+                let (r, mctx) = mctx.parse(atom_env, "Pattern", 0)?;
 
                 let TokenTree::Token(t) = t else {
                     return Err("Expecting compare operation".into());
                 };
 
                 let op = match t.text {
-                    "=" => Op::Equ,
-                    _ => todo!(), // TODO opcode
+                    "==" => Op::Equ,
+                    "!=" => Op::Neq,
+                    "<" => Op::Lt,
+                    ">" => Op::Gt,
+                    "<=" => Op::Leq,
+                    ">=" => Op::Geq,
                 };
 
                 heads.push(Head::Guard(op, l, r));
@@ -609,7 +617,7 @@ pub fn parse_command<'a>(
             };
 
             let def = TableDef(name.clone(), params, ret);
-            Ok((Command::TableDef(TableName(name), def), ctx))
+            Ok((Command::TableDef(name, def), ctx))
         }
         "query" => {
             let (heads, ctx) = parse_heads(ctx, pat_env)?;
@@ -628,7 +636,7 @@ pub fn parse_commands(line: &str) -> Result<Vec<Command>, String> {
     let pat_env = build_pattern_parser_env(atom_env);
     let mut ctx = ParserContext(&token_trees[..]);
     let mut commands: Vec<Command> = vec![];
-    while ctx.peek().is_none() {
+    while ctx.peek().is_some() {
         let (r, rest) = parse_command(ctx, &expr_env, &pat_env)?;
         ctx = rest;
         commands.push(r);

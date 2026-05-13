@@ -1,10 +1,11 @@
+use alloc::boxed::Box;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use core::fmt::Display;
 
-use alloc::{boxed::Box, string::String};
-
-use crate::{
+use crate::regraph::{
     common::{Atom, Name, Set, TableName, TypeName},
-    core::rule,
+    rule::Op,
     types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
 };
 
@@ -13,18 +14,9 @@ pub enum Command {
     TypeDef(TypeName, TypeDef),
     TableDef(TableName, TableDef),
     Rule(Rule),
-    Fact(FunctionCall),
+    Fact(Bodys),
     // repl only
     Query(Heads),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FactConstructor(pub Name, Box<[Fact]>);
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Fact {
-    Atom(Atom),
-    FactConstructor(FactConstructor),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -44,65 +36,66 @@ pub trait VarExtractor {
 pub enum Head {
     Match(ConstructorPattern),
     LetEq(Pattern, Pattern),
-    Guard(Op, Pattern, Pattern),
+    Guard(Op, VarName, AtomOrVariable),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Pattern {
     Wildcard,
-    AtomOrVariable(AtomOrVariable),
+    Atom(Atom),
+    Variable(VarName),
     Constructor(ConstructorPattern),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConstructorPattern(pub Name, pub Box<[Pattern]>);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Op {
-    Equ,
-    Neq,
-    Lt,
-    Gt,
-    Leq,
-    Geq,
-}
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+// pub enum Op {
+//     Equ,
+//     Neq,
+//     Lt,
+//     Gt,
+//     Leq,
+//     Geq,
+// }
 
-impl Op {
-    pub fn to_constraint_op(&self, is_sign: bool) -> rule::Op {
-        match self {
-            Op::Equ => rule::Op::Equ,
-            Op::Neq => rule::Op::Neq,
-            Op::Lt => {
-                if is_sign {
-                    rule::Op::Lt
-                } else {
-                    rule::Op::Ltu
-                }
-            }
-            Op::Gt => {
-                if is_sign {
-                    rule::Op::Gt
-                } else {
-                    rule::Op::Gtu
-                }
-            }
-            Op::Leq => {
-                if is_sign {
-                    rule::Op::Leq
-                } else {
-                    rule::Op::Lequ
-                }
-            }
-            Op::Geq => {
-                if is_sign {
-                    rule::Op::Geq
-                } else {
-                    rule::Op::Gequ
-                }
-            }
-        }
-    }
-}
+// impl Op {
+//     pub fn to_constraint_op(&self, is_sign: bool) -> rule::Op {
+//         match self {
+//             Op::Equ => rule::Op::Equ,
+//             Op::Neq => rule::Op::Neq,
+//             Op::Lt => {
+//                 if is_sign {
+//                     rule::Op::Lt
+//                 } else {
+//                     rule::Op::Ltu
+//                 }
+//             }
+//             Op::Gt => {
+//                 if is_sign {
+//                     rule::Op::Gt
+//                 } else {
+//                     rule::Op::Gtu
+//                 }
+//             }
+//             Op::Leq => {
+//                 if is_sign {
+//                     rule::Op::Leq
+//                 } else {
+//                     rule::Op::Lequ
+//                 }
+//             }
+//             Op::Geq => {
+//                 if is_sign {
+//                     rule::Op::Geq
+//                 } else {
+//                     rule::Op::Gequ
+//                 }
+//             }
+//         }
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
@@ -158,10 +151,16 @@ pub type VarName = Name;
 impl Display for Atom {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Atom::Int(i) => write!(f, "{i}i"),
-            Atom::Uint(u) => write!(f, "{u}u"),
+            Atom::I8(i) => write!(f, "{i}i8"),
+            Atom::I16(i) => write!(f, "{i}i16"),
+            Atom::I32(i) => write!(f, "{i}i32"),
+            Atom::U8(u) => write!(f, "{u}u8"),
+            Atom::U16(u) => write!(f, "{u}u16"),
+            Atom::U32(u) => write!(f, "{u}u32"),
+            Atom::I64(i) => write!(f, "{i}i64"),
+            Atom::U64(u) => write!(f, "{u}u64"),
             Atom::Bool(b) => write!(f, "{b}"),
-            Atom::Str(s) => write!(f, "\"{}\"", s.escape_debug()),
+            Atom::Str(s) => write!(f, "\"string_{}\"", s),
         }
     }
 }
@@ -207,40 +206,6 @@ impl Expr {
     }
 }
 
-impl TryFrom<Expr> for Fact {
-    type Error = String;
-
-    fn try_from(value: Expr) -> Result<Self, Self::Error> {
-        match value {
-            Expr::AtomOrVariable(AtomOrVariable::Atom(atom)) => Ok(Fact::Atom(atom)),
-            Expr::AtomOrVariable(AtomOrVariable::Variable(_)) => {
-                Err("Fact cannot contains variable".into())
-            }
-            Expr::FunctionCall(FunctionCall(name, args)) => {
-                let args = args
-                    .into_iter()
-                    .map(Fact::try_from)
-                    .collect::<Result<Box<[_]>, _>>()?;
-
-                Ok(Fact::FactConstructor(FactConstructor(name, args)))
-            }
-        }
-    }
-}
-
-impl From<&Fact> for Expr {
-    fn from(value: &Fact) -> Self {
-        match value {
-            Fact::Atom(atom) => Expr::AtomOrVariable(AtomOrVariable::Atom(atom.clone())),
-            Fact::FactConstructor(FactConstructor(name, args)) => {
-                let args = args.iter().map(|x| x.into()).collect::<Box<[Expr]>>();
-
-                Expr::FunctionCall(FunctionCall(name.clone(), args))
-            }
-        }
-    }
-}
-
 impl Display for FunctionCall {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.fmt_internal(f, false)
@@ -257,10 +222,10 @@ impl Display for Body {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Body::Insert(call, expr) => {
-                write!(f, "insert {call}")?;
+                write!(f, "set {call}")?;
 
                 if let Some(expr) = expr {
-                    write!(f, " -> {expr}")?;
+                    write!(f, " = {expr}")?;
                 }
 
                 Ok(())
@@ -268,11 +233,11 @@ impl Display for Body {
             Body::Union(l, r) => {
                 write!(f, "union ")?;
                 l.fmt_internal(f, true)?;
-                write!(f, " <- ")?;
+                write!(f, " with ")?;
                 r.fmt_internal(f, true)
             }
             Body::Let(name, call) => {
-                write!(f, "let {name} := {call}")
+                write!(f, "let {name} = {call}")
             }
         }
     }
@@ -282,7 +247,8 @@ impl Pattern {
     fn fmt_internal(&self, f: &mut core::fmt::Formatter<'_>, paren: bool) -> core::fmt::Result {
         match self {
             Pattern::Wildcard => write!(f, "_"),
-            Pattern::AtomOrVariable(aov) => write!(f, "{aov}"),
+            Pattern::Atom(a) => write!(f, "{a}"),
+            Pattern::Variable(v) => write!(f, "{v}"),
             Pattern::Constructor(ConstructorPattern(g, args)) => {
                 if paren && !args.is_empty() {
                     write!(f, "(")?;
@@ -365,10 +331,9 @@ impl Display for Head {
                 r.fmt_internal(f, true)
             }
             Head::Guard(op, l, r) => {
-                write!(f, "if ")?;
-                l.fmt_internal(f, true)?;
-                write!(f, " {op} ")?;
-                r.fmt_internal(f, true)
+                write!(f, "if {}", l)?;
+                write!(f, " {op} {}", r)?;
+                Ok(())
             }
         }
     }
@@ -473,8 +438,14 @@ impl Display for Command {
                 Ok(())
             }
             Command::Fact(fact) => {
-                let expr: Expr = Expr::FunctionCall(fact.clone());
-                write!(f, "fact {expr}")
+                write!(
+                    f,
+                    "fact {}",
+                    fact.iter()
+                        .map(|b| b.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
             }
             Command::TableDef(_, def) => write!(f, "{def}"),
             Command::Query(heads) => {

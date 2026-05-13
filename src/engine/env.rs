@@ -1,15 +1,29 @@
+use alloc::{borrow::ToOwned, boxed::Box, vec};
 use alloc::{format, vec::Vec};
 
 use crate::{
-    common::{ConstructorName, Map, TableName, TypeName},
-    frontend::error::CompileError,
-    types::{TableDef, TypeDef},
+    engine::error::CompileError,
+    regraph::{
+        common::{ConstructorName, Map, TableName, TypeName},
+        types::{TableDef, TypeDef},
+    },
 };
 
-#[derive(Debug, Default, Clone)]
+pub type CompileEnv = DataTypeEnv;
+
+#[derive(Debug, Clone)]
 pub struct TableEnv {
     pub tables: Vec<TableDef>,
     pub name_map: Map<TableName, usize>,
+}
+
+impl Default for TableEnv {
+    fn default() -> Self {
+        let mut name_map: Map<TableName, usize> = Default::default();
+        let tables = vec![TableDef("Unit".to_owned(), Box::new([]), None)];
+        name_map.insert("Unit".to_owned(), 0);
+        Self { tables, name_map }
+    }
 }
 
 impl TableEnv {
@@ -17,6 +31,11 @@ impl TableEnv {
         let offset = self.tables.len();
         if self.name_map.contains_key(&name) {
             return Err(CompileError::DuplicateTableName(name));
+        }
+        // is unit table
+        if def.1.is_empty() && def.2.is_none() {
+            self.name_map.insert(name, 0);
+            return Ok(());
         }
         self.tables.push(def.clone());
         self.name_map.insert(name, offset);
