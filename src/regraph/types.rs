@@ -31,10 +31,10 @@ impl Type {
 }
 
 impl Type {
-    pub fn to_base_type(&self) -> Type {
+    pub fn to_base_type(&self) -> BaseType {
         match self {
-            Type::Base(base) => Type::Base(base.clone()),
-            Type::Name(_) => Type::Base(BaseType::Id),
+            Type::Base(base) => base.clone(),
+            Type::Name(_) => BaseType::Id,
         }
     }
 }

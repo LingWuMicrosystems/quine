@@ -2,9 +2,12 @@ use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
     engine::frontend::syntax::VarName,
-    regraph::common::{ColumnIndex, Map, Value, VarId},
-    regraph::types::Type,
-    regraph::{related_egraph::TableId, table::Row},
+    regraph::{
+        common::{ColumnIndex, Map, Set, Value, VarId},
+        related_egraph::TableId,
+        table::Row,
+        types::Type,
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -15,11 +18,21 @@ pub enum Op {
     Gt,
     Leq,
     Geq,
-    Ltu,
-    Gtu,
-    Lequ,
-    Gequ,
 }
+
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+// pub enum Op {
+//     Equ,
+//     Neq,
+//     Lt,
+//     Gt,
+//     Leq,
+//     Geq,
+//     Ltu,
+//     Gtu,
+//     Lequ,
+//     Gequ,
+// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Constraint {
@@ -49,6 +62,16 @@ pub struct Query {
 
     pub var_cols: Box<[VarColsScanRule]>,
     pub constraints: Box<[CrossConstraint]>,
+}
+
+impl Query {
+    pub fn tables(&self) -> Set<TableId> {
+        self.var_cols
+            .iter()
+            .map(|v| v.iter().map(|f| f.table))
+            .flatten()
+            .collect()
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -93,6 +116,25 @@ pub struct Action {
     // pub lets_map: Map<VarName, VarId>,
     pub lets: Box<[FunctionCall]>,
     pub tail: Box<[ActionTail]>,
+}
+
+impl Action {
+    pub fn tables(&self) -> Set<TableId> {
+        let lets: Set<_> = self.lets.iter().map(|fc| fc.offset).collect();
+        let tail: Set<_> = self
+            .tail
+            .iter()
+            .map(|t| {
+                if let ActionTail::Insert(offset, _, _) = t {
+                    Some(*offset)
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect();
+        lets.union(&tail).copied().collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -10,7 +10,7 @@ use crate::{
     engine::command::BackendCommand,
     engine::frontend::syntax::{self, Command},
     regraph::rule::VariableRecord,
-    regraph::types::{TableDef, Type},
+    regraph::types::TableDef,
 };
 
 impl EngineContext {
@@ -31,11 +31,6 @@ impl EngineContext {
                 Ok(BackendCommand::AddTables(r))
             }
             Command::TableDef(name, table_def) => {
-                let table_def = TableDef(
-                    table_def.0,
-                    table_def.1.iter().map(Type::to_base_type).collect(),
-                    table_def.2.as_ref().map(Type::to_base_type),
-                );
                 self.table_types.insert(name, table_def.clone())?;
                 Ok(BackendCommand::AddTables(vec![table_def]))
             }
@@ -44,17 +39,19 @@ impl EngineContext {
                 &fact,
                 &self.table_types.name_map,
                 &VariableRecord::default(),
+                &mut self.interner,
             )?)),
             Command::Query(head) => Ok(BackendCommand::Query(heads2query(
                 &head,
                 &self.table_types,
+                &mut self.interner,
             )?)),
         }
     }
 
-    fn check_and_compile_rule(&self, rule: &syntax::Rule) -> Result<rule::Rule, CompileError> {
-        let query = heads2query(&rule.heads, &self.table_types)?;
-        let action = bodys2action(&rule.bodys, &self.table_types.name_map, &query.variables)?;
+    fn check_and_compile_rule(&mut self, rule: &syntax::Rule) -> Result<rule::Rule, CompileError> {
+        let query = heads2query(&rule.heads, &self.table_types, &mut self.interner)?;
+        let action = bodys2action(&rule.bodys, &self.table_types.name_map, &query.variables, &mut self.interner)?;
         Ok(rule::Rule { query, action })
     }
 }

@@ -6,6 +6,8 @@ use crate::{
         env::TableEnv,
         error::CompileError,
         frontend::syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
+        frontend::utils::atom_to_value,
+        interner::Interner,
     },
     regraph::common::{ColumnIndex, Map, Set, VarId},
     regraph::types::Type,
@@ -15,7 +17,7 @@ use crate::{
     },
 };
 
-pub fn heads2query(heads: &[Head], table_env: &TableEnv) -> Result<Query, CompileError> {
+pub fn heads2query(heads: &[Head], table_env: &TableEnv, interner: &mut Interner) -> Result<Query, CompileError> {
     let mut variables = VariableRecord::default();
 
     let mut scans: Map<VarId, Vec<FusedScan>> = Map::default();
@@ -57,8 +59,8 @@ pub fn heads2query(heads: &[Head], table_env: &TableEnv) -> Result<Query, Compil
                     .entry(VarId(var))
                     .or_default()
                     .insert(Constraint {
-                        op: op.to_constraint_op(atom_ty.is_sign()),
-                        value: a.clone().to_value(),
+                        op: *op,
+                        value: atom_to_value(a, interner),
                     });
             }
             Head::Guard(op, lhs, AtomOrVariable::Variable(rhs)) => {
@@ -74,7 +76,7 @@ pub fn heads2query(heads: &[Head], table_env: &TableEnv) -> Result<Query, Compil
                     return Err(CompileError::TypeCheckError(rhs_ty.clone(), lhs_ty.clone()));
                 }
                 constraints.insert(CrossConstraint {
-                    op: op.to_constraint_op(lhs_ty.is_sign()),
+                    op: *op,
                     lhs: VarId(lhs_offset),
                     rhs: VarId(rhs_offset),
                 });
@@ -121,7 +123,7 @@ pub fn heads2query(heads: &[Head], table_env: &TableEnv) -> Result<Query, Compil
                     .or_default()
                     .insert(Constraint {
                         op: rule::Op::Equ,
-                        value: a.clone().to_value(),
+                        value: atom_to_value(a, interner),
                     });
             }
             Head::LetEq(pattern, pattern1) => {

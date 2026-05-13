@@ -86,10 +86,6 @@ fn main() {
                 };
                 for cmd in cmds {
                     let result = engine_context.run_command(cmd);
-                    let Ok(result) = result else {
-                        eprintln!("error: {:?}", result.unwrap_err());
-                        continue;
-                    };
                     if let Some((var_record, rows)) = result {
                         for row in rows {
                             for (name, offset) in &var_record.names_map {
