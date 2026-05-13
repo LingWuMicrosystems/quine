@@ -1,10 +1,6 @@
 use std::{borrow::Cow, fs, path::PathBuf};
 
-use quine::{
-    engine::EngineContext,
-    pest_parser::parse_commands,
-    regraph::types::{BaseType, Type},
-};
+use quine::{engine::EngineContext, pest_parser::parse_commands};
 
 use directories::ProjectDirs;
 use reedline::{
@@ -86,39 +82,15 @@ fn main() {
                 };
                 for cmd in cmds {
                     let result = engine_context.run_command(cmd);
-                    let Ok(result) = result else {
-                        eprintln!("error: {:?}", result.unwrap_err());
+                    let Some((var_record, rows)) = result else {
                         continue;
                     };
-                    if let Some((var_record, rows)) = result {
-                        for row in rows {
-                            for (name, offset) in &var_record.names_map {
-                                let ty = var_record.get_type(*offset).unwrap();
-                                let value = row.0.get(*offset).unwrap();
-                                let value = match ty {
-                                    Type::Base(ty) => match ty {
-                                        BaseType::Id => todo!(),
-                                        BaseType::I1 => {
-                                            if value.0 == 0 {
-                                                "false".to_owned()
-                                            } else {
-                                                "true".to_owned()
-                                            }
-                                        }
-                                        BaseType::I8 => (value.0 as i8).to_string(),
-                                        BaseType::U8 => (value.0 as i8).to_string(),
-                                        BaseType::I16 => (value.0 as i16).to_string(),
-                                        BaseType::U16 => (value.0 as u16).to_string(),
-                                        BaseType::I32 => (value.0 as i32).to_string(),
-                                        BaseType::U32 => value.0.to_string(),
-                                        BaseType::F32 => (value.0 as f32).to_string(),
-                                        _ => unimplemented!(),
-                                    },
-                                    Type::Name(_) => todo!(),
-                                };
-                                print!("{name}: {value}\t");
-                            }
-                            println!();
+                    for row in rows {
+                        for (name, offset) in &var_record.names_map {
+                            let ty = var_record.get_type(*offset).unwrap();
+                            let value = row.0.get(*offset).unwrap();
+                            let term = engine_context.extract(*value, ty);
+                            println!("{}: {}", name, term);
                         }
                     }
                 }

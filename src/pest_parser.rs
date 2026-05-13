@@ -7,10 +7,11 @@ use pest::Parser;
 use pest_derive::Parser;
 
 use crate::engine::frontend::syntax::{
-    AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Op, Pattern,
+    AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
     Rule as SyntaxRule,
 };
 use crate::regraph::common::{Atom, Name, TypeName};
+use crate::regraph::rule::Op;
 use crate::regraph::types::{BaseType, SumType, TableDef, Type, TypeConstructor, TypeDef};
 
 #[derive(Parser)]

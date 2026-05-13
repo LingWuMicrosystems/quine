@@ -4,6 +4,8 @@ use alloc::vec::Vec;
 use crate::{
     engine::error::CompileError,
     engine::frontend::syntax::{AtomOrVariable, Body, Expr, FunctionCall},
+    engine::frontend::utils::atom_to_value,
+    engine::interner::Interner,
     regraph::common::{Map, TableName, VarId},
     regraph::types::{BaseType, Type},
     regraph::{
@@ -16,12 +18,13 @@ pub fn bodys2action(
     bodys: &[Body],
     table_map: &Map<TableName, TableId>,
     head_variables: &VariableRecord,
+    interner: &mut Interner,
 ) -> Result<Action, CompileError> {
     let mut lets = Vec::default();
     let mut tails = Vec::default();
     let mut variables = VariableRecord::default();
     for body in bodys {
-        if let Some(tail) = body2action(body, table_map, head_variables, &mut variables, &mut lets)?
+        if let Some(tail) = body2action(body, table_map, head_variables, &mut variables, &mut lets, interner)?
         {
             tails.push(tail);
         }
@@ -40,10 +43,11 @@ fn body2action(
     head_variables: &VariableRecord,
     variables: &mut VariableRecord,
     lets: &mut Vec<rule::FunctionCall>,
+    interner: &mut Interner,
 ) -> Result<Option<ActionTail>, CompileError> {
     match body {
         Body::Let(var_name, function_call) => {
-            function_call_transform(function_call, table_map, head_variables, variables, lets)?;
+            function_call_transform(function_call, table_map, head_variables, variables, lets, interner)?;
             // TODO: type check
             variables.insert_var(Some(var_name.clone()), Type::Base(BaseType::Id));
             Ok(None)
@@ -56,7 +60,7 @@ fn body2action(
                 .1
                 .iter()
                 .map(|arg| -> Result<ValueOrVariable, CompileError> {
-                    expr_transform(arg, table_map, head_variables, variables, lets)
+                    expr_transform(arg, table_map, head_variables, variables, lets, interner)
                 })
                 .collect::<Result<Box<[ValueOrVariable]>, CompileError>>()?;
             let expr = if let Some(expr) = expr {
@@ -66,6 +70,7 @@ fn body2action(
                     head_variables,
                     variables,
                     lets,
+                    interner,
                 )?)
             } else {
                 None
@@ -73,8 +78,8 @@ fn body2action(
             Ok(Some(ActionTail::Insert(*table_id, args, expr)))
         }
         Body::Union(expr, expr1) => {
-            let id1 = expr_transform(expr, table_map, head_variables, variables, lets)?;
-            let id2 = expr_transform(expr1, table_map, head_variables, variables, lets)?;
+            let id1 = expr_transform(expr, table_map, head_variables, variables, lets, interner)?;
+            let id2 = expr_transform(expr1, table_map, head_variables, variables, lets, interner)?;
             Ok(Some(ActionTail::Union(id1, id2)))
         }
     }
@@ -86,11 +91,12 @@ pub fn function_call_transform(
     head_variables: &VariableRecord,
     variables: &mut VariableRecord,
     lets: &mut Vec<rule::FunctionCall>,
+    interner: &mut Interner,
 ) -> Result<VarId, CompileError> {
     let args = call
         .1
         .iter()
-        .flat_map(|expr| expr_transform(expr, table_map, head_variables, variables, lets))
+        .flat_map(|expr| expr_transform(expr, table_map, head_variables, variables, lets, interner))
         .collect();
 
     let f = rule::FunctionCall {
@@ -113,11 +119,12 @@ fn expr_transform(
     head_variables: &VariableRecord,
     variables: &mut VariableRecord,
     lets: &mut Vec<rule::FunctionCall>,
+    interner: &mut Interner,
 ) -> Result<rule::ValueOrVariable, CompileError> {
     match expr {
-        Expr::AtomOrVariable(a) => atom_or_variable_transform(a, head_variables, variables),
+        Expr::AtomOrVariable(a) => atom_or_variable_transform(a, head_variables, variables, interner),
         Expr::FunctionCall(function_call) => Ok(ValueOrVariable::Variable(
-            function_call_transform(function_call, table_map, head_variables, variables, lets)?,
+            function_call_transform(function_call, table_map, head_variables, variables, lets, interner)?,
         )),
     }
 }
@@ -126,9 +133,10 @@ fn atom_or_variable_transform(
     a: &AtomOrVariable,
     head_variables: &VariableRecord,
     variables: &mut VariableRecord,
+    interner: &mut Interner,
 ) -> Result<rule::ValueOrVariable, CompileError> {
     match a {
-        AtomOrVariable::Atom(a) => Ok(ValueOrVariable::Value(a.clone().to_value())),
+        AtomOrVariable::Atom(a) => Ok(ValueOrVariable::Value(atom_to_value(a, interner))),
         AtomOrVariable::Variable(v) => {
             if let Some(offset) = head_variables.get_offset(v) {
                 Ok(ValueOrVariable::Variable(VarId(offset)))

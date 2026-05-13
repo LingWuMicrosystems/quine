@@ -12,12 +12,12 @@ command = {
 }
 
 rule = {
-    "rule" ~ heads ~ "->" ~ bodies ~ ";"
+    "rule" ~ heads ~ "->" ~ bodies ~ (";")?
 }
 
-fact = { "fact" ~ bodies ~ ";" }
+fact = { "fact" ~ bodies ~ (";")? }
 
-query = { "query" ~ heads ~ ";" }
+query = { "query" ~ heads ~ (";")? }
 
 heads = {
     head ~ ("," ~ head)*

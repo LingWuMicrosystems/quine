@@ -10,6 +10,6 @@ pub enum BackendCommand {
     AddTables(Vec<TableDef>),
     AddRule(Rule),
     Action(Action),
-    // repl only
     Query(Query),
+    Run,
 }

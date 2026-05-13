@@ -3,10 +3,10 @@ use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::fmt::Display;
 
-use crate::{
-    regraph::common::{Atom, Name, Set, TableName, TypeName},
-    regraph::rule,
-    regraph::types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
+use crate::regraph::{
+    common::{Atom, Name, Set, TableName, TypeName},
+    rule::Op,
+    types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -50,52 +50,52 @@ pub enum Pattern {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConstructorPattern(pub Name, pub Box<[Pattern]>);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Op {
-    Equ,
-    Neq,
-    Lt,
-    Gt,
-    Leq,
-    Geq,
-}
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+// pub enum Op {
+//     Equ,
+//     Neq,
+//     Lt,
+//     Gt,
+//     Leq,
+//     Geq,
+// }
 
-impl Op {
-    pub fn to_constraint_op(&self, is_sign: bool) -> rule::Op {
-        match self {
-            Op::Equ => rule::Op::Equ,
-            Op::Neq => rule::Op::Neq,
-            Op::Lt => {
-                if is_sign {
-                    rule::Op::Lt
-                } else {
-                    rule::Op::Ltu
-                }
-            }
-            Op::Gt => {
-                if is_sign {
-                    rule::Op::Gt
-                } else {
-                    rule::Op::Gtu
-                }
-            }
-            Op::Leq => {
-                if is_sign {
-                    rule::Op::Leq
-                } else {
-                    rule::Op::Lequ
-                }
-            }
-            Op::Geq => {
-                if is_sign {
-                    rule::Op::Geq
-                } else {
-                    rule::Op::Gequ
-                }
-            }
-        }
-    }
-}
+// impl Op {
+//     pub fn to_constraint_op(&self, is_sign: bool) -> rule::Op {
+//         match self {
+//             Op::Equ => rule::Op::Equ,
+//             Op::Neq => rule::Op::Neq,
+//             Op::Lt => {
+//                 if is_sign {
+//                     rule::Op::Lt
+//                 } else {
+//                     rule::Op::Ltu
+//                 }
+//             }
+//             Op::Gt => {
+//                 if is_sign {
+//                     rule::Op::Gt
+//                 } else {
+//                     rule::Op::Gtu
+//                 }
+//             }
+//             Op::Leq => {
+//                 if is_sign {
+//                     rule::Op::Leq
+//                 } else {
+//                     rule::Op::Lequ
+//                 }
+//             }
+//             Op::Geq => {
+//                 if is_sign {
+//                     rule::Op::Geq
+//                 } else {
+//                     rule::Op::Gequ
+//                 }
+//             }
+//         }
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
@@ -147,23 +147,6 @@ pub enum Body {
 
 pub type Function = Name;
 pub type VarName = Name;
-
-impl Display for Atom {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Atom::I8(i) => write!(f, "{i}i8"),
-            Atom::I16(i) => write!(f, "{i}i16"),
-            Atom::I32(i) => write!(f, "{i}i32"),
-            Atom::U8(u) => write!(f, "{u}u8"),
-            Atom::U16(u) => write!(f, "{u}u16"),
-            Atom::U32(u) => write!(f, "{u}u32"),
-            Atom::I64(i) => write!(f, "{i}i64"),
-            Atom::U64(u) => write!(f, "{u}u64"),
-            Atom::Bool(b) => write!(f, "{b}"),
-            Atom::Str(s) => write!(f, "\"{}\"", s.escape_debug()),
-        }
-    }
-}
 
 impl Display for AtomOrVariable {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
