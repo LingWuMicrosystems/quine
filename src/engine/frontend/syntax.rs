@@ -148,23 +148,6 @@ pub enum Body {
 pub type Function = Name;
 pub type VarName = Name;
 
-impl Display for Atom {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Atom::I8(i) => write!(f, "{i}i8"),
-            Atom::I16(i) => write!(f, "{i}i16"),
-            Atom::I32(i) => write!(f, "{i}i32"),
-            Atom::U8(u) => write!(f, "{u}u8"),
-            Atom::U16(u) => write!(f, "{u}u16"),
-            Atom::U32(u) => write!(f, "{u}u32"),
-            Atom::I64(i) => write!(f, "{i}i64"),
-            Atom::U64(u) => write!(f, "{u}u64"),
-            Atom::Bool(b) => write!(f, "{b}"),
-            Atom::Str(s) => write!(f, "\"string_{}\"", s),
-        }
-    }
-}
-
 impl Display for AtomOrVariable {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {

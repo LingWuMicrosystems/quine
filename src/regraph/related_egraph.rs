@@ -70,7 +70,7 @@ impl RelatedEGraph {
                 .iter()
                 .map(|rule_id| {
                     let query = &self.ruleset[*rule_id].query;
-                    self.run_query(&query)
+                    self.run_query(query)
                 })
                 .collect();
 
@@ -251,6 +251,32 @@ impl RelatedEGraph {
         self.union_find.add(id);
         id
     }
+
+    pub fn find(&self, id: Value) -> Value {
+        self.union_find.find(id)
+    }
+
+    pub fn table_count(&self) -> usize {
+        self.tables.len()
+    }
+
+    pub fn get_table(&self, tid: TableId) -> &Table {
+        &self.tables[tid]
+    }
+
+    pub fn find_defining_row(&self, id: Value) -> Option<(TableId, RowIndex)> {
+        let id = self.union_find.find(id);
+        for (tid, table) in self.tables.iter().enumerate() {
+            if let Column::Id(vals) = &table.columns[table.arity()] {
+                for (i, &v) in vals.iter().enumerate() {
+                    if self.union_find.find(v) == id {
+                        return Some((tid, RowIndex(i)));
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(Value, Value)> {
@@ -297,8 +323,8 @@ fn check_cross(lhs: Value, rhs: Value, op: Op, ty: &Type) -> bool {
             let r = rhs.0 != 0;
             cmp_cross_inner(l, r, op)
         }
-        BaseType::I8  => cmp_cross_inner(lhs.0 as i8, rhs.0 as i8, op),
-        BaseType::U8  => cmp_cross_inner(lhs.0 as u8, rhs.0 as u8, op),
+        BaseType::I8 => cmp_cross_inner(lhs.0 as i8, rhs.0 as i8, op),
+        BaseType::U8 => cmp_cross_inner(lhs.0 as u8, rhs.0 as u8, op),
         BaseType::I16 => cmp_cross_inner(lhs.0 as i16, rhs.0 as i16, op),
         BaseType::U16 => cmp_cross_inner(lhs.0 as u16, rhs.0 as u16, op),
         BaseType::I32 => cmp_cross_inner(lhs.0 as i32, rhs.0 as i32, op),
@@ -322,8 +348,8 @@ fn cmp_cross_inner<T: PartialEq + PartialOrd>(l: T, r: T, op: Op) -> bool {
     match op {
         Op::Equ => l == r,
         Op::Neq => l != r,
-        Op::Lt  => l < r,
-        Op::Gt  => l > r,
+        Op::Lt => l < r,
+        Op::Gt => l > r,
         Op::Leq => l <= r,
         Op::Geq => l >= r,
     }

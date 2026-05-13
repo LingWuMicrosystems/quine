@@ -68,8 +68,7 @@ impl Query {
     pub fn tables(&self) -> Set<TableId> {
         self.var_cols
             .iter()
-            .map(|v| v.iter().map(|f| f.table))
-            .flatten()
+            .flat_map(|v| v.iter().map(|f| f.table))
             .collect()
     }
 }
@@ -124,14 +123,13 @@ impl Action {
         let tail: Set<_> = self
             .tail
             .iter()
-            .map(|t| {
+            .filter_map(|t| {
                 if let ActionTail::Insert(offset, _, _) = t {
                     Some(*offset)
                 } else {
                     None
                 }
             })
-            .flatten()
             .collect();
         lets.union(&tail).copied().collect()
     }

@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use smallvec::SmallVec;
 
 use crate::regraph::{
-    common::{ColumnIndex, Map, RowIndex, Set, Value},
+    common::{ColumnIndex, Map, RowIndex, Set, TableName, Value},
     rule::{Constraint, Op},
     types::{BaseType, TableDef, Type},
     uf::UnionFind,
@@ -53,6 +53,7 @@ impl Column {
 
 #[derive(Debug, Clone)]
 pub struct Table {
+    pub name: TableName,
     // pub rows: Vec<Value>,
     pub columns: Box<[Column]>,
     pub key_index: Map<Row, RowIndex>,
@@ -72,6 +73,7 @@ impl Table {
         );
         let columns = col_types.iter().map(Column::from_base_type).collect();
         Self {
+            name: table_def.0,
             columns,
             key_index: Default::default(),
             parents: Default::default(),
@@ -165,8 +167,8 @@ impl Table {
                         match c.op {
                             Op::Equ => v == c_v,
                             Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
+                            Op::Lt => !v & c_v,
+                            Op::Gt => v & !c_v,
                             Op::Leq => v <= c_v,
                             Op::Geq => v >= c_v,
                         }
@@ -305,7 +307,7 @@ impl Table {
                 .filter(|v| {
                     cs.iter().all(|c| {
                         let v = **v;
-                        let c_v = c.value.0 as u64;
+                        let c_v = c.value.0;
                         match c.op {
                             Op::Equ => v == c_v,
                             Op::Neq => v != c_v,
@@ -316,7 +318,7 @@ impl Table {
                         }
                     })
                 })
-                .map(|x| Value((*x) as u64))
+                .map(|x| Value(*x))
                 .collect(),
             Column::F32(items) => items
                 .iter()
