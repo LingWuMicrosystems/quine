@@ -46,6 +46,7 @@ impl EngineContext {
                 &self.table_types,
                 &mut self.interner,
             )?)),
+            Command::Run => Ok(BackendCommand::Run),
         }
     }
 

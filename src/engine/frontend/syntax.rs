@@ -17,6 +17,7 @@ pub enum Command {
     Fact(Bodys),
     // repl only
     Query(Heads),
+    Run,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -404,21 +405,16 @@ impl Display for Command {
                     if idx != 0 {
                         write!(f, ", ")?;
                     }
-
                     write!(f, "{head}")?;
                 }
-
-                write!(f, " => ")?;
-
+                write!(f, " {{ ")?;
                 for (idx, body) in bodys.iter().enumerate() {
                     if idx != 0 {
-                        write!(f, " ; ")?;
+                        write!(f, ", ")?;
                     }
-
                     write!(f, "{body}")?;
                 }
-
-                Ok(())
+                write!(f, " }}")
             }
             Command::Fact(fact) => {
                 write!(
@@ -437,12 +433,11 @@ impl Display for Command {
                     if idx != 0 {
                         write!(f, ", ")?;
                     }
-
                     write!(f, "{head}")?;
                 }
-
                 Ok(())
             }
+            Command::Run => write!(f, "run"),
         }
     }
 }

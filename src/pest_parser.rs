@@ -179,7 +179,7 @@ fn parse_base_type(pair: pest::iterators::Pair<Rule>) -> BaseType {
         "u64" => BaseType::U64,
         "f32" => BaseType::F32,
         "f64" => BaseType::F64,
-        "string" => BaseType::Str,
+        "str" => BaseType::Str,
         _ => unreachable!("unexpected base type: {}", pair.as_str()),
     }
 }
@@ -242,8 +242,15 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             let heads = parse_heads(inner.into_inner().next().unwrap());
             Command::Query(heads)
         }
+        Rule::run => Command::Run,
         _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),
     }
+}
+
+pub fn parse_file(input: &str) -> Result<Vec<Command>, String> {
+    let pairs = QuineParser::parse(Rule::TOP_LEVEL, input).map_err(|e| format!("{}", e))?;
+    let commands = pairs.into_iter().map(parse_command).collect();
+    Ok(commands)
 }
 
 pub fn parse_commands(input: &str) -> Result<Vec<Command>, String> {
@@ -256,7 +263,8 @@ pub fn parse_commands(input: &str) -> Result<Vec<Command>, String> {
             break;
         }
 
-        let pairs = QuineParser::parse(Rule::command, remaining).map_err(|e| format!("{}", e))?;
+        let pairs =
+            QuineParser::parse(Rule::repl_command, remaining).map_err(|e| format!("{}", e))?;
 
         for pair in pairs {
             let end = pair.as_span().end();

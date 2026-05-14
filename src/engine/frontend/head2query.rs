@@ -5,19 +5,24 @@ use crate::{
     engine::{
         env::TableEnv,
         error::CompileError,
-        frontend::syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
-        frontend::utils::atom_to_value,
+        frontend::{
+            syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
+            utils::atom_to_value,
+        },
         interner::Interner,
     },
-    regraph::common::{ColumnIndex, Map, Set, VarId},
-    regraph::types::Type,
     regraph::{
-        rule::{self, Constraint, CrossConstraint, FusedScan, Query, VariableRecord},
-        types::BaseType,
+        common::{ColumnIndex, Map, Set, VarId},
+        rule::{self, Constraint, CrossConstraint, FusedScan, Op, Query, VariableRecord},
+        types::{BaseType, Type},
     },
 };
 
-pub fn heads2query(heads: &[Head], table_env: &TableEnv, interner: &mut Interner) -> Result<Query, CompileError> {
+pub fn heads2query(
+    heads: &[Head],
+    table_env: &TableEnv,
+    interner: &mut Interner,
+) -> Result<Query, CompileError> {
     let mut variables = VariableRecord::default();
 
     let mut scans: Map<VarId, Vec<FusedScan>> = Map::default();
@@ -35,6 +40,7 @@ pub fn heads2query(heads: &[Head], table_env: &TableEnv, interner: &mut Interner
                     &mut scans,
                     &mut guard_cmps,
                     &mut constraints,
+                    interner,
                 )?;
             }
             Head::Guard(op, var, AtomOrVariable::Atom(a)) => {
@@ -137,6 +143,7 @@ pub fn heads2query(heads: &[Head], table_env: &TableEnv, interner: &mut Interner
                     &mut scans,
                     &mut guard_cmps,
                     &mut constraints,
+                    interner,
                 )?
                 else {
                     continue;
@@ -149,6 +156,7 @@ pub fn heads2query(heads: &[Head], table_env: &TableEnv, interner: &mut Interner
                     &mut scans,
                     &mut guard_cmps,
                     &mut constraints,
+                    interner,
                 )?
                 else {
                     continue;
@@ -195,6 +203,7 @@ fn check_and_compile_con_pattern(
     scans: &mut Map<VarId, Vec<FusedScan>>,
     guard_cmps: &mut Map<VarId, Set<Constraint>>,
     constraints: &mut Set<CrossConstraint>,
+    interner: &mut Interner,
 ) -> Result<Option<VarId>, CompileError> {
     let offset = table_env
         .get_offset(&constructor_pattern.0)
@@ -218,6 +227,7 @@ fn check_and_compile_con_pattern(
             scans,
             guard_cmps,
             constraints,
+            interner,
         )?
         else {
             continue;
@@ -257,6 +267,7 @@ fn check_and_compile_pattern(
     scans: &mut Map<VarId, Vec<FusedScan>>,
     guard_cmps: &mut Map<VarId, Set<Constraint>>,
     constraints: &mut Set<CrossConstraint>,
+    interner: &mut Interner,
 ) -> Result<Option<VarId>, CompileError> {
     match pattern {
         Pattern::Wildcard => Ok(None),
@@ -274,7 +285,15 @@ fn check_and_compile_pattern(
                 ));
             }
 
-            Ok(Some(variables.insert_var(None, defined_type.clone())))
+            let varid = variables.insert_var(None, defined_type.clone());
+            let value = atom_to_value(atom, interner);
+
+            guard_cmps
+                .entry(varid)
+                .or_default()
+                .insert(Constraint { op: Op::Equ, value });
+
+            Ok(Some(varid))
         }
         Pattern::Variable(name) => {
             if let Some(var) = variables.get_offset(name) {
@@ -294,6 +313,7 @@ fn check_and_compile_pattern(
                 scans,
                 guard_cmps,
                 constraints,
+                interner,
             )?;
             Ok(Some(res.unwrap()))
         }

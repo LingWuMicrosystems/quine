@@ -14,6 +14,8 @@ use crate::regraph::{
 pub type TableId = usize;
 pub type RuleId = usize;
 
+pub type NativeFn = fn(input: &[Value]) -> Value;
+
 #[derive(Debug, Default, Clone)]
 pub struct RelatedEGraph {
     union_find: UnionFind,
@@ -21,6 +23,8 @@ pub struct RelatedEGraph {
 
     pending_unions: Vec<(Value, Value)>,
     dirty_tables: Vec<TableId>,
+
+    native_functions: Vec<NativeFn>,
 
     ruleset: Vec<Rule>,
     rule_deps: Map<TableId, Vec<RuleId>>,
@@ -103,7 +107,7 @@ impl RelatedEGraph {
 
     fn apply_function_call(&mut self, function_call: &FunctionCall, args: Row) -> Value {
         if function_call.is_native {
-            unimplemented!();
+            return self.native_functions[function_call.offset](&args.0);
         }
         let result = self.alloc_id();
         self.insert(function_call.offset, args, result);

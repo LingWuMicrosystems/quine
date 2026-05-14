@@ -2,22 +2,43 @@ WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
 KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "==" | "=>" | "!=" | "<" | ">" | "<=" | ">=" }
 
-command = {
+TOP_LEVEL = {
+    command*
+}
+
+REPL_TOP_LEVEL = {
+    repl_command*
+}
+
+repl_command = {
     type_def
   | relation_def
   | function_def
   | rule
   | fact
+  | rule
+  | run
   | query
 }
 
-rule = {
-    "rule" ~ heads ~ "->" ~ bodies ~ (";")?
+command = {
+    type_def
+  | relation_def
+  | function_def
+  | fact
+  | rule
+  | run
 }
 
-fact = { "fact" ~ bodies ~ (";")? }
+run = @{ "run" }
 
-query = { "query" ~ heads ~ (";")? }
+rule = {
+    "rule" ~ heads ~ "{" ~ bodies ~ "}"
+}
+
+fact = { "fact" ~ bodies }
+
+query = { "query" ~ heads }
 
 heads = {
     head ~ ("," ~ head)*
@@ -34,13 +55,13 @@ head = {
 }
 
 constructor_pattern = {
-    "(" ~ variable ~ pattern* ~ ")"
+    variable ~ "(" ~ pattern* ~ ")"
 }
 
 pattern = {
-    atom
+    constructor_pattern
+  | atom
   | variable
-  | constructor_pattern
   | "_"
 }
 
@@ -89,22 +110,22 @@ expr = {
   | atom_or_variable
 }
 
-function_call = { "(" ~ variable ~ expr* ~ ")" }
+function_call = { variable ~ "(" ~ (expr ~ ("," ~ expr)*)? ~ ")" }
 
 type_def = {
-    "data" ~ variable ~ ("|" ~ type_constructor)+
+    "data" ~ variable ~ "=" ~ type_constructor ~ ("|" ~ type_constructor)*
 }
 
 relation_def = {
-    "relation" ~ variable ~ "(" ~ type+ ~ ")"
+    "relation" ~ variable ~ "(" ~ (type ~ ("," ~ type)*)? ~ ")"
 }
 
 function_def = {
-    "function" ~ variable ~ "(" ~ type* ~ ")" ~ "->" ~ type
+    "function" ~ variable ~ "(" ~ (type ~ ("," ~ type)*)? ~ ")" ~ "->" ~ type
 }
 
 type_constructor = {
-    variable ~ ("(" ~ type+ ~ ")")?
+    variable ~ ("(" ~ type ~ ("," ~ type)* ~ ")")?
 }
 
 type = {
@@ -124,10 +145,12 @@ base_type = {
   | "u64"
   | "f32"
   | "f64"
-  | "string"
+  | "str"
 }
 
-variable = @{ (!(KEYWORD | WHITESPACE | "_" | "," | ";" | "(" | ")" | "[" | "]" | "{" | "}") ~ ANY)+ }
+variable           = @{ variable_head_char ~ variable_char* }
+variable_head_char = _{ (!ASCII_DIGIT ~ variable_char) }
+variable_char      = _{ (!(KEYWORD | WHITESPACE | "_" | "," | ";" | "(" | ")" | "[" | "]" | "{" | "}") ~ ANY) }
 
 atom = {
     boolean
