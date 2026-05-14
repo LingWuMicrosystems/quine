@@ -2,19 +2,15 @@ use std::env;
 use std::{borrow::Cow, fs, path::PathBuf};
 
 use quine::{
-    engine::{frontend::syntax::Command, EngineContext},
+    engine::{EngineContext, frontend::syntax::Command},
     pest_parser::{parse_commands, parse_file},
-    regraph::{
-        common::Set,
-        rule::VariableRecord,
-        table::Row,
-    },
+    regraph::{common::Set, rule::VariableRecord, table::Row},
 };
 
 use directories::ProjectDirs;
 use reedline::{
-    DefaultValidator, FileBackedHistory, Prompt, PromptEditMode, PromptHistorySearch, Reedline,
-    Signal,
+    FileBackedHistory, Prompt, PromptEditMode, PromptHistorySearch, Reedline, Signal,
+    ValidationResult, Validator,
 };
 
 #[derive(Clone)]
@@ -96,8 +92,26 @@ fn run_file(ctx: &mut EngineContext, path: &str) -> Result<(), String> {
     execute_commands(ctx, cmds)
 }
 
+struct QuineValidator;
+impl Validator for QuineValidator {
+    fn validate(&self, line: &str) -> ValidationResult {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty()
+            || trimmed == "exit"
+            || trimmed == "quit"
+            || trimmed.starts_with("load \"")
+        {
+            return ValidationResult::Complete;
+        }
+        match parse_commands(line) {
+            Ok(_) => ValidationResult::Complete,
+            Err(_) => ValidationResult::Incomplete,
+        }
+    }
+}
+
 fn run_repl(ctx: &mut EngineContext) {
-    let validator = Box::new(DefaultValidator);
+    let validator = Box::new(QuineValidator);
     let history_file = get_history_path();
     let history = Box::new(FileBackedHistory::with_file(1000, history_file).unwrap());
     let mut line_editor = Reedline::create()
@@ -106,7 +120,6 @@ fn run_repl(ctx: &mut EngineContext) {
     let prompt = QuinePrompt;
 
     println!("Quine 0.1.0");
-    println!("Type :exit to quit, :load <file> to load a file");
 
     loop {
         let sig = line_editor.read_line(&prompt).unwrap();
@@ -117,20 +130,18 @@ fn run_repl(ctx: &mut EngineContext) {
                     continue;
                 }
 
-                // REPL meta-commands (:load, :exit)
-                if let Some(rest) = input.strip_prefix(':') {
-                    match rest.trim() {
-                        "exit" | "quit" | "q" => break,
-                        cmd if cmd.starts_with("load ") => {
-                            let path = cmd.strip_prefix("load ").unwrap().trim().trim_matches('"');
-                            match run_file(ctx, path) {
-                                Ok(()) => {}
-                                Err(e) => eprintln!("error: {e}"),
-                            }
+                // REPL meta-commands
+                match input {
+                    "exit" | "quit" => break,
+                    cmd if cmd.starts_with("load \"") => {
+                        let path = &cmd[6..cmd.len() - 1];
+                        match run_file(ctx, path) {
+                            Ok(()) => {}
+                            Err(e) => eprintln!("error: {e}"),
                         }
-                        _ => eprintln!("unknown command: {input}"),
+                        continue;
                     }
-                    continue;
+                    _ => {}
                 }
 
                 let cmds = parse_commands(input);
@@ -157,11 +168,9 @@ fn execute_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<(), S
         return Err(format!("{:?}", cmds.unwrap_err()));
     };
     for cmd in cmds {
-        let result = ctx.run_command(cmd);
-        let Some((var_record, rows)) = result else {
-            continue;
-        };
-        print_query_result(&var_record, rows, ctx);
+        if let Some((var_record, rows)) = ctx.run_command(cmd) {
+            print_query_result(&var_record, rows, ctx);
+        }
     }
     Ok(())
 }

@@ -16,7 +16,6 @@ repl_command = {
   | function_def
   | rule
   | fact
-  | rule
   | run
   | query
 }
@@ -30,7 +29,7 @@ command = {
   | run
 }
 
-run = @{ "run" }
+run  = @{ "run" }
 
 rule = {
     "rule" ~ heads ~ "{" ~ bodies ~ "}"

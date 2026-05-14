@@ -52,7 +52,12 @@ impl EngineContext {
 
     fn check_and_compile_rule(&mut self, rule: &syntax::Rule) -> Result<rule::Rule, CompileError> {
         let query = heads2query(&rule.heads, &self.table_types, &mut self.interner)?;
-        let action = bodys2action(&rule.bodys, &self.table_types.name_map, &query.variables, &mut self.interner)?;
+        let action = bodys2action(
+            &rule.bodys,
+            &self.table_types.name_map,
+            &query.variables,
+            &mut self.interner,
+        )?;
         Ok(rule::Rule { query, action })
     }
 }
