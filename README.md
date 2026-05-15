@@ -89,7 +89,3 @@ Triggers e-graph saturation: applies all rules until no new facts are produced.
 ```bash
 cargo build --release
 ```
-
-## License
-
-MIT
