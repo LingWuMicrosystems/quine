@@ -1,9 +1,10 @@
 use alloc::boxed::Box;
+use alloc::format;
 use alloc::vec::Vec;
 
 use crate::{
     engine::{
-        env::TableEnv,
+        env::{DataTypeEnv, TableEnv},
         error::CompileError,
         frontend::{
             syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
@@ -12,7 +13,7 @@ use crate::{
         interner::Interner,
     },
     regraph::{
-        common::{ColumnIndex, Map, Set, VarId},
+        common::{ColumnIndex, ConstructorName, Map, Set, VarId},
         rule::{self, Constraint, CrossConstraint, FusedScan, Op, Query, VariableRecord},
         types::{BaseType, Type},
     },
@@ -20,6 +21,7 @@ use crate::{
 
 struct QueryCtx<'a> {
     table_env: &'a TableEnv,
+    data_types: &'a DataTypeEnv,
     variables: &'a mut VariableRecord,
     scans: &'a mut Map<VarId, Vec<FusedScan>>,
     guard_cmps: &'a mut Map<VarId, Set<Constraint>>,
@@ -30,6 +32,7 @@ struct QueryCtx<'a> {
 pub fn heads2query(
     heads: &[Head],
     table_env: &TableEnv,
+    data_types: &DataTypeEnv,
     interner: &mut Interner,
 ) -> Result<Query, CompileError> {
     let mut variables = VariableRecord::default();
@@ -39,6 +42,7 @@ pub fn heads2query(
 
     let mut ctx = QueryCtx {
         table_env,
+        data_types,
         variables: &mut variables,
         scans: &mut scans,
         guard_cmps: &mut guard_cmps,
@@ -205,6 +209,22 @@ fn check_and_compile_pattern(
             }
         }
         Pattern::Constructor(constructor_pattern) => {
+            let Type::Name(expected_name) = defined_type else {
+                return Err(CompileError::TypeCheckError(
+                    defined_type.clone(),
+                    Type::Name(constructor_pattern.0.clone()),
+                ));
+            };
+            let cons_name = ConstructorName(format!("{}.{}", expected_name, constructor_pattern.0));
+            let cons_type = ctx.data_types.get_constructor_type(&cons_name).ok_or_else(|| {
+                CompileError::InvalidTableName(constructor_pattern.0.clone())
+            })?;
+            if cons_type.0 != *expected_name {
+                return Err(CompileError::TypeCheckError(
+                    Type::Name(expected_name.clone()),
+                    Type::Name(cons_type.0.clone()),
+                ));
+            }
             let res = check_and_compile_con_pattern(ctx, constructor_pattern, true)?;
             Ok(Some(res.unwrap()))
         }

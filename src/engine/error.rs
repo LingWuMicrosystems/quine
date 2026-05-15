@@ -10,6 +10,7 @@ use crate::{
 pub enum CompileError {
     DuplicateTableName(TableName),
     DuplicateTypeName(TypeName),
+    UnknownTypeName(TypeName),
     InvalidTableName(TableName),
     InvalidTableColumn(TableName, ColumnIndex),
     InvalidVariableName(VarName),

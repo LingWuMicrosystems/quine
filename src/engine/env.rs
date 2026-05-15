@@ -83,4 +83,9 @@ impl DataTypeEnv {
         // self.type2name_map.insert(type_def, offset);
         Ok(())
     }
+
+    pub fn get_constructor_type(&self, name: &ConstructorName) -> Option<TypeName> {
+        let &idx = self.cons2type_map.get(name)?;
+        Some(TypeName(self.type_list[idx].0.clone()))
+    }
 }
