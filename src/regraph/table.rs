@@ -1,5 +1,4 @@
-use std::boxed::Box;
-
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use smallvec::SmallVec;
 
