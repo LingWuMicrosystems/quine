@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use crate::engine::EngineContext;
 use crate::engine::error::CompileError;
-use crate::engine::frontend::body2action::{bodys2action, CompileCtx};
+use crate::engine::frontend::body2action::{CompileCtx, bodys2action};
 use crate::engine::frontend::head2query::heads2query;
 use crate::regraph::common::TypeName;
 use crate::regraph::rule;
@@ -60,19 +60,22 @@ impl EngineContext {
                 };
                 Ok(BackendCommand::Action(bodys2action(&mut ctx, &fact)?))
             }
-            Command::Query(head) => Ok(BackendCommand::Query(heads2query(
-                &head,
-                &self.table_types,
-                &self.data_types,
-                &mut self.interner,
-            )?)),
+            Command::Query(heads, vars) => Ok(BackendCommand::Query(
+                heads2query(&heads, &self.table_types, &self.data_types, &mut self.interner)?,
+                vars,
+            )),
             Command::Run => Ok(BackendCommand::Run),
         }
     }
 
     fn check_type_defined(&self, ty: &Type) -> Result<(), CompileError> {
         match ty {
-            Type::Name(name) if !self.data_types.name2type_map.contains_key(&TypeName(name.clone())) => {
+            Type::Name(name)
+                if !self
+                    .data_types
+                    .name2type_map
+                    .contains_key(&TypeName(name.clone())) =>
+            {
                 Err(CompileError::UnknownTypeName(TypeName(name.clone())))
             }
             _ => Ok(()),
@@ -80,7 +83,12 @@ impl EngineContext {
     }
 
     fn check_and_compile_rule(&mut self, rule: &syntax::Rule) -> Result<rule::Rule, CompileError> {
-        let query = heads2query(&rule.heads, &self.table_types, &self.data_types, &mut self.interner)?;
+        let query = heads2query(
+            &rule.heads,
+            &self.table_types,
+            &self.data_types,
+            &mut self.interner,
+        )?;
         let mut ctx = CompileCtx {
             table_map: &self.table_types.name_map,
             head_variables: &query.variables,

@@ -1,6 +1,6 @@
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
-KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "==" | "=>" | "!=" | "<" | ">" | "<=" | ">=" }
+KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "==" | "=>" | "!=" | "<" | ">" | "<=" | ">=" }
 
 TOP_LEVEL = {
     command*
@@ -29,7 +29,7 @@ command = {
   | run
 }
 
-run  = @{ "run" }
+run = @{ "run" }
 
 rule = {
     "rule" ~ heads ~ "{" ~ bodies ~ "}"
@@ -37,7 +37,7 @@ rule = {
 
 fact = { "fact" ~ bodies }
 
-query = { "query" ~ heads }
+query = { "query" ~ heads ~ "print" ~ "(" ~ variable ~ ("," ~ variable)* ~ ")" }
 
 heads = {
     head ~ ("," ~ head)*
@@ -54,7 +54,7 @@ head = {
 }
 
 constructor_pattern = {
-    variable ~ "(" ~ pattern* ~ ")"
+    variable ~ "(" ~ (pattern ~ ("," ~ pattern)*)? ~ ")"
 }
 
 pattern = {

@@ -27,8 +27,7 @@ pub struct NativeSignature {
     pub ret: BaseType,
 }
 use crate::{
-    engine::command::BackendCommand,
-    engine::env::CompileEnv,
+    engine::{command::BackendCommand, env::CompileEnv},
     regraph::{related_egraph::RelatedEGraph, rule::VariableRecord, table::Row},
 };
 
@@ -90,9 +89,26 @@ impl EngineContext {
                     .apply_action(&action, Set::from_iter([Row(smallvec![])]));
                 None
             }
-            BackendCommand::Query(query) => {
-                let result = self.regraph.run_query(&query);
-                Some((query.variables.clone(), result))
+            BackendCommand::Query(query, vars) => {
+                let mut result = self.regraph.run_query(&query);
+                if vars.is_empty() {
+                    return Some((query.variables.clone(), result));
+                }
+                let mut proj_record = VariableRecord::default();
+                for name in &vars {
+                    let offset = query.variables.get_offset(name).unwrap();
+                    let ty = query.variables.get_type(offset).unwrap();
+                    proj_record.insert_var(Some(name.clone()), ty.clone());
+                }
+                let offsets: Vec<_> = vars
+                    .iter()
+                    .map(|n| query.variables.get_offset(n).unwrap())
+                    .collect();
+                result = result
+                    .into_iter()
+                    .map(|row| Row(offsets.iter().map(|&o| *row.0.get(o).unwrap()).collect()))
+                    .collect();
+                Some((proj_record, result))
             }
             BackendCommand::Run => {
                 self.regraph.set_fully_dirty();
@@ -113,7 +129,10 @@ impl EngineContext {
         self.native_names.insert(name.into(), offset);
         self.native_signatures.insert(
             name.into(),
-            NativeSignature { args: args.into(), ret },
+            NativeSignature {
+                args: args.into(),
+                ret,
+            },
         );
     }
 

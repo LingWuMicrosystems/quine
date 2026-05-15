@@ -239,8 +239,14 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             Command::Fact(bodie)
         }
         Rule::query => {
-            let heads = parse_heads(inner.into_inner().next().unwrap());
-            Command::Query(heads)
+            let mut parts = inner.into_inner();
+            let heads = parse_heads(parts.next().unwrap());
+            // skip "print" keyword token
+            parts.next();
+            // skip "(" token
+            parts.next();
+            let vars: Vec<_> = parts.map(|p| parse_variable(p)).collect();
+            Command::Query(heads, vars)
         }
         Rule::run => Command::Run,
         _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),

@@ -16,7 +16,7 @@ pub enum Command {
     Rule(Rule),
     Fact(Bodys),
     // repl only
-    Query(Heads),
+    Query(Heads, Vec<VarName>),
     Run,
 }
 
@@ -427,15 +427,18 @@ impl Display for Command {
                 )
             }
             Command::TableDef(_, def) => write!(f, "{def}"),
-            Command::Query(heads) => {
+            Command::Query(heads, vars) => {
                 write!(f, "query ")?;
                 for (idx, head) in heads.iter().enumerate() {
-                    if idx != 0 {
-                        write!(f, ", ")?;
-                    }
+                    if idx != 0 { write!(f, ", ")?; }
                     write!(f, "{head}")?;
                 }
-                Ok(())
+                write!(f, " print(")?;
+                for (idx, v) in vars.iter().enumerate() {
+                    if idx != 0 { write!(f, ", ")?; }
+                    write!(f, "{v}")?;
+                }
+                write!(f, ")")
             }
             Command::Run => write!(f, "run"),
         }

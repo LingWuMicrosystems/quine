@@ -26,7 +26,7 @@ impl UnionFind {
         }
     }
 
-    /// non compressed find
+    /// compressed find
     #[inline]
     pub fn find_compress(&mut self, id: Value) -> Value {
         let mut cur = id;
