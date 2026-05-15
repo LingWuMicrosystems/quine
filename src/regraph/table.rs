@@ -123,13 +123,13 @@ impl Table {
         match &self.columns[find_column.0] {
             Column::Id(values) => values
                 .iter()
+                .map(|v| uf.find(*v))
                 .filter(|v| {
                     cs.iter().all(|c| {
-                        let v = uf.find(**v);
                         let c_v = c.value;
                         match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
+                            Op::Equ => *v == c_v,
+                            Op::Neq => *v != c_v,
                             Op::Lt => unreachable!(""),
                             Op::Gt => unreachable!(""),
                             Op::Leq => unreachable!(""),
@@ -137,7 +137,6 @@ impl Table {
                         }
                     })
                 })
-                .cloned()
                 .collect(),
             Column::Str(values) => values
                 .iter()

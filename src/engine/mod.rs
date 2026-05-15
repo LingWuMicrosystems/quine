@@ -3,6 +3,7 @@ pub mod env;
 pub mod error;
 pub mod frontend;
 pub mod interner;
+pub mod prelude;
 pub mod term;
 
 use alloc::borrow::ToOwned;
@@ -15,9 +16,16 @@ use smallvec::smallvec;
 use crate::engine::env::TableEnv;
 use crate::engine::interner::Interner;
 use crate::engine::term::Term;
-use crate::regraph::common::{Atom, Set, TypeName, Value};
+use crate::regraph::common::{Atom, Map, Name, Set, TypeName, Value};
+use crate::regraph::related_egraph::NativeFn;
 use crate::regraph::table::Column;
 use crate::regraph::types::{BaseType, SumType, TableDef, Type, TypeDef};
+
+#[derive(Debug, Clone)]
+pub struct NativeSignature {
+    pub args: Box<[BaseType]>,
+    pub ret: BaseType,
+}
 use crate::{
     engine::command::BackendCommand,
     engine::env::CompileEnv,
@@ -30,6 +38,8 @@ pub struct EngineContext {
     pub table_types: TableEnv,
     pub interner: Interner,
     pub regraph: RelatedEGraph,
+    pub native_names: Map<Name, usize>,
+    pub native_signatures: Map<Name, NativeSignature>,
 }
 
 impl Default for EngineContext {
@@ -46,12 +56,16 @@ impl Default for EngineContext {
         let new_id = regraph.alloc_id();
         regraph.insert(0, Row(smallvec![]), new_id);
 
-        Self {
+        let mut ctx = Self {
             data_types,
             table_types,
             interner: Interner::default(),
             regraph,
-        }
+            native_names: Map::default(),
+            native_signatures: Map::default(),
+        };
+        crate::engine::prelude::register_prelude(&mut ctx);
+        ctx
     }
 }
 
@@ -86,6 +100,25 @@ impl EngineContext {
                 None
             }
         }
+    }
+
+    pub fn register_native(
+        &mut self,
+        name: &str,
+        args: &[BaseType],
+        ret: BaseType,
+        func: NativeFn,
+    ) {
+        let offset = self.regraph.register_native_fn(func);
+        self.native_names.insert(name.into(), offset);
+        self.native_signatures.insert(
+            name.into(),
+            NativeSignature { args: args.into(), ret },
+        );
+    }
+
+    pub fn native_offset(&self, name: &str) -> Option<usize> {
+        self.native_names.get(name).copied()
     }
 
     pub fn extract(&self, id: Value, ty: &Type) -> Term {

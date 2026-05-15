@@ -79,7 +79,7 @@ impl RelatedEGraph {
                 .collect();
 
             // apply actions
-            for (rule_id, rows) in app_rules.iter().zip(rules_rows.into_iter()) {
+            for (rule_id, rows) in app_rules.iter().zip(rules_rows) {
                 let action = &self.ruleset[*rule_id].action.clone();
                 self.apply_action(action, rows);
             }
@@ -188,10 +188,20 @@ impl RelatedEGraph {
     pub fn insert(&mut self, table_id: usize, mut key: Row, value: Value) {
         let table = &mut self.tables[table_id];
 
-        // canonical value
-        // let value = self.union_find.find_compress(value);
-
         debug_assert_eq!(key.0.len(), table.arity());
+
+        // canonicalize Id columns before lookup/storage
+        for (i, v) in key.0.iter_mut().enumerate() {
+            if matches!(table.columns[i], Column::Id(_)) {
+                *v = self.union_find.find(*v);
+            }
+        }
+        let value = if matches!(table.columns[table.arity()], Column::Id(_)) {
+            self.union_find.find(value)
+        } else {
+            value
+        };
+
         if let Some(row_idx) = table.key_index.get(&key) {
             if let Some(r) = self.union_find.union(table.get_result(*row_idx), value) {
                 self.pending_unions.push(r);
@@ -202,9 +212,7 @@ impl RelatedEGraph {
 
         let row_idx = RowIndex(table.row_count());
 
-        // insert forward find table
         table.key_index.insert(key.clone(), row_idx);
-        // insert backward find table — only Id columns can be unioned
         for (i, v) in key.0.iter().enumerate() {
             if matches!(table.columns[i], Column::Id(_)) {
                 table.parents.entry(*v).or_default().push(row_idx);
@@ -215,14 +223,14 @@ impl RelatedEGraph {
         }
 
         key.0.push(value);
-        // insert row & result
         table.insert_row(key);
         self.set_dirty(table_id);
     }
 
     pub fn union(&mut self, old: Value, new: Value) {
-        let (old, new) = self.union_find.union(old, new).unwrap();
-        self.pending_unions.push((old, new));
+        if let Some(r) = self.union_find.union(old, new) {
+            self.pending_unions.push(r);
+        }
     }
 
     pub fn rebuild(&mut self) {
@@ -248,6 +256,12 @@ impl RelatedEGraph {
                 }
             }
         }
+    }
+
+    pub fn register_native_fn(&mut self, func: NativeFn) -> usize {
+        let offset = self.native_functions.len();
+        self.native_functions.push(func);
+        offset
     }
 
     pub fn alloc_id(&mut self) -> Value {
