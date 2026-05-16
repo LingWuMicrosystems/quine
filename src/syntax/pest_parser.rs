@@ -211,6 +211,7 @@ fn parse_type_constructor(pair: pest::iterators::Pair<Rule>) -> TypeConstructor 
 }
 
 fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
+    debug_assert!(matches!(pair.as_rule(), Rule::command | Rule::repl_command));
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
         Rule::type_def => {
@@ -260,12 +261,26 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
 }
 
 pub fn parse_file(input: &str) -> Result<Vec<Command>, String> {
-    let pairs = QuineParser::parse(Rule::TOP_LEVEL, input).map_err(|e| format!("{}", e))?;
-    let commands = pairs.into_iter().map(parse_command).collect();
+    let pairs: Vec<_> = QuineParser::parse(Rule::TOP_LEVEL, input)
+        .map_err(|e| format!("{}", e))?
+        .collect();
+
+    let consumed = pairs.last().map_or(0, |p| p.as_span().end());
+    let remaining = input[consumed..].trim();
+    if !remaining.is_empty() {
+        return Err(format!(
+            "unexpected input at position {consumed}: {remaining}"
+        ));
+    }
+
+    let commands = pairs
+        .into_iter()
+        .flat_map(|pair| pair.into_inner().map(parse_command))
+        .collect();
     Ok(commands)
 }
 
-pub fn parse_commands(input: &str) -> Result<Vec<Command>, String> {
+pub fn parse_repl_commands(input: &str) -> Result<Vec<Command>, String> {
     let mut commands = Vec::new();
     let mut pos = 0;
 

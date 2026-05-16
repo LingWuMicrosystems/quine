@@ -5,7 +5,7 @@ use quine::{
     engine::EngineContext,
     regraph::{common::Set, rule::VariableRecord, table::Row},
     syntax::Command,
-    syntax::pest_parser::{parse_commands, parse_file},
+    syntax::pest_parser::{parse_file, parse_repl_commands},
 };
 
 use directories::ProjectDirs;
@@ -110,7 +110,7 @@ impl Validator for QuineValidator {
         {
             return ValidationResult::Complete;
         }
-        match parse_commands(line) {
+        match parse_repl_commands(line) {
             Ok(_) => ValidationResult::Complete,
             Err(_) => ValidationResult::Incomplete,
         }
@@ -151,7 +151,7 @@ fn run_repl(ctx: &mut EngineContext) {
                     _ => {}
                 }
 
-                let cmds = parse_commands(input);
+                let cmds = parse_repl_commands(input);
                 let Ok(cmds) = cmds else {
                     eprintln!("error: {:?}", cmds.unwrap_err());
                     continue;
@@ -188,7 +188,8 @@ fn print_query_result(var_record: &VariableRecord, rows: Set<Row>, ctx: &EngineC
             let ty = var_record.get_type(*offset).unwrap();
             let value = row.0.get(*offset).unwrap();
             let term = ctx.extract(*value, ty);
-            println!("{name}: {term}");
+            print!("{name}: {term}");
         }
+        println!();
     }
 }
