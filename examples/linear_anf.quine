@@ -1,0 +1,28 @@
+data VarList = Cons(u32, VarList) | Nil
+data ParamList = Cons(u32, IRType, ParamList) | Nil
+
+data Compute
+    = Var(u32)
+    | Const(str)
+    | Literal(Literal)
+    | Closure(Closure)
+    | Constructor(Name, VarList)
+    | ReuseConstructor(u32, str, VarList)
+    | Call(u32, VarList)
+
+data Closure = C(Compute, Continuation)
+data Continuation = C(ParamList, IRType, IR)
+
+data RecClosures = Cons(u32, Closure, RecClosures) | Nil
+data CaseList = Cons(Pattern, IR, CaseList) | Nil
+
+data IR
+    = Let(str, IRType, Compute, IR)
+    | LetRec(RecClosures, IR)
+    | LetCont(str, Continuation, IR)
+    | LetLoop(str, Continuation, IR)
+    | Dup(str, IRType, IR)
+    | Drop(str, IRType, IR)
+    | Return(str)
+    | JumpCont(str, VarList)
+    | CaseOn(str, CaseList)
