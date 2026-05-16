@@ -6,13 +6,13 @@ use alloc::vec::Vec;
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::engine::frontend::syntax::{
-    AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
-    Rule as SyntaxRule,
-};
 use crate::regraph::common::{Atom, Name, TypeName};
 use crate::regraph::rule::Op;
 use crate::regraph::types::{BaseType, SumType, TableDef, Type, TypeConstructor, TypeDef};
+use crate::syntax::{
+    AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
+    Rule as SyntaxRule, Span,
+};
 
 #[derive(Parser)]
 #[grammar = "../docs/grammar.pest"]
@@ -20,6 +20,10 @@ pub struct QuineParser;
 
 fn to_name(s: &str) -> Name {
     String::from(s)
+}
+
+fn to_span(s: pest::Span) -> Span {
+    Span::new(s.start(), s.end())
 }
 
 fn parse_variable(pair: pest::iterators::Pair<Rule>) -> Name {
@@ -73,29 +77,31 @@ fn parse_atom_or_variable(pair: pest::iterators::Pair<Rule>) -> AtomOrVariable {
 }
 
 fn parse_pattern_inner(pair: pest::iterators::Pair<Rule>) -> Pattern {
+    let span = to_span(pair.as_span());
     match pair.into_inner().next() {
         Some(inner) => match inner.as_rule() {
             Rule::constructor_pattern => {
                 let cp = parse_constructor_pattern(inner);
-                if cp.1.is_empty() {
-                    Pattern::Variable(cp.0)
+                if cp.args.is_empty() {
+                    Pattern::Variable(span, cp.name)
                 } else {
-                    Pattern::Constructor(cp)
+                    Pattern::Constructor(span, cp)
                 }
             }
-            Rule::atom => Pattern::Atom(parse_atom(inner)),
-            Rule::variable => Pattern::Variable(parse_variable(inner)),
-            _ => Pattern::Wildcard,
+            Rule::atom => Pattern::Atom(span, parse_atom(inner)),
+            Rule::variable => Pattern::Variable(span, parse_variable(inner)),
+            _ => Pattern::Wildcard(span),
         },
-        None => Pattern::Wildcard,
+        None => Pattern::Wildcard(span),
     }
 }
 
 fn parse_constructor_pattern(pair: pest::iterators::Pair<Rule>) -> ConstructorPattern {
+    let span = to_span(pair.as_span());
     let mut inners = pair.into_inner();
     let name = parse_variable(inners.next().unwrap());
     let args: Box<[Pattern]> = inners.map(parse_pattern_inner).collect();
-    ConstructorPattern(name, args)
+    ConstructorPattern { name, args, span }
 }
 
 fn parse_expr(pair: pest::iterators::Pair<Rule>) -> Expr {
@@ -115,21 +121,24 @@ fn parse_function_call(pair: pest::iterators::Pair<Rule>) -> FunctionCall {
 }
 
 fn parse_head(pair: pest::iterators::Pair<Rule>) -> Head {
+    let span = to_span(pair.as_span());
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
-        Rule::constructor_pattern => Head::Match(parse_constructor_pattern(inner)),
+        Rule::constructor_pattern => Head::Match(span, parse_constructor_pattern(inner)),
         Rule::leteq => {
             let mut parts = inner.into_inner();
-            let var = parse_variable(parts.next().unwrap());
+            let var_pair = parts.next().unwrap();
+            let var_span = to_span(var_pair.as_span());
+            let var = parse_variable(var_pair);
             let pat = parse_pattern_inner(parts.next().unwrap());
-            Head::LetEq(Pattern::Variable(var), pat)
+            Head::LetEq(span, Pattern::Variable(var_span, var), pat)
         }
         Rule::guard => {
             let mut parts = inner.into_inner();
             let var = parse_variable(parts.next().unwrap());
             let op = parse_op(parts.next().unwrap());
             let aov = parse_atom_or_variable(parts.next().unwrap());
-            Head::Guard(op, var, aov)
+            Head::Guard(span, op, var, aov)
         }
         _ => unreachable!("unexpected head variant: {:?}", inner.as_rule()),
     }
@@ -140,23 +149,24 @@ fn parse_heads(pair: pest::iterators::Pair<Rule>) -> Box<[Head]> {
 }
 
 fn parse_body(pair: pest::iterators::Pair<Rule>) -> Body {
+    let span = to_span(pair.as_span());
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
         Rule::let_ => {
             let mut parts = inner.into_inner();
             let var = parse_variable(parts.next().unwrap());
             let call = parse_function_call(parts.next().unwrap());
-            Body::Let(var, call)
+            Body::Let(span, var, call)
         }
         Rule::insert => {
             let call = parse_function_call(inner.into_inner().next().unwrap());
-            Body::Insert(call, None)
+            Body::Insert(span, call, None)
         }
         Rule::union => {
             let mut parts = inner.into_inner();
             let left = parse_expr(parts.next().unwrap());
             let right = parse_expr(parts.next().unwrap());
-            Body::Union(left, right)
+            Body::Union(span, left, right)
         }
         _ => unreachable!("unexpected body variant: {:?}", inner.as_rule()),
     }
@@ -213,8 +223,9 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
         Rule::relation_def => {
             let mut parts = inner.into_inner();
             let name = parse_variable(parts.next().unwrap());
-            let types: Box<[Type]> = parts.map(parse_type).collect();
-            Command::TableDef(name.clone(), TableDef(name, types, None))
+            let mut types: Vec<_> = parts.map(parse_type).collect();
+            types.push(Type::Base(BaseType::Id));
+            Command::TableDef(name.clone(), TableDef(name, types.into()))
         }
         Rule::function_def => {
             let mut parts = inner.into_inner();
@@ -225,8 +236,7 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
                     types.push(parse_type(part));
                 }
             }
-            let ret = types.pop();
-            Command::TableDef(name.clone(), TableDef(name, types.into(), ret))
+            Command::TableDef(name.clone(), TableDef(name, types.into()))
         }
         Rule::rule => {
             let mut parts = inner.into_inner();
@@ -239,8 +249,10 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             Command::Fact(bodie)
         }
         Rule::query => {
-            let heads = parse_heads(inner.into_inner().next().unwrap());
-            Command::Query(heads)
+            let mut parts = inner.into_inner();
+            let heads = parse_heads(parts.next().unwrap());
+            let vars: Vec<_> = parts.map(|p| parse_variable(p)).collect();
+            Command::Query(heads, vars)
         }
         Rule::run => Command::Run,
         _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),

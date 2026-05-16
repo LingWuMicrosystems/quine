@@ -1,6 +1,7 @@
 use alloc::{borrow::ToOwned, boxed::Box, vec};
 use alloc::{format, vec::Vec};
 
+use crate::regraph::types::{BaseType, Type};
 use crate::{
     engine::error::CompileError,
     regraph::{
@@ -20,7 +21,10 @@ pub struct TableEnv {
 impl Default for TableEnv {
     fn default() -> Self {
         let mut name_map: Map<TableName, usize> = Default::default();
-        let tables = vec![TableDef("Unit".to_owned(), Box::new([]), None)];
+        let tables = vec![TableDef(
+            "Unit".to_owned(),
+            Box::new([Type::Base(BaseType::Id)]),
+        )];
         name_map.insert("Unit".to_owned(), 0);
         Self { tables, name_map }
     }
@@ -32,8 +36,8 @@ impl TableEnv {
         if self.name_map.contains_key(&name) {
             return Err(CompileError::DuplicateTableName(name));
         }
-        // is unit table
-        if def.1.is_empty() && def.2.is_none() {
+        // is unit table (only result column, no key columns)
+        if def.1.len() <= 1 {
             self.name_map.insert(name, 0);
             return Ok(());
         }
@@ -82,5 +86,10 @@ impl DataTypeEnv {
         self.name2type_map.insert(name, offset);
         // self.type2name_map.insert(type_def, offset);
         Ok(())
+    }
+
+    pub fn get_constructor_type(&self, name: &ConstructorName) -> Option<TypeName> {
+        let &idx = self.cons2type_map.get(name)?;
+        Some(TypeName(self.type_list[idx].0.clone()))
     }
 }

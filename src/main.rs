@@ -2,9 +2,10 @@ use std::env;
 use std::{borrow::Cow, fs, path::PathBuf};
 
 use quine::{
-    engine::{EngineContext, frontend::syntax::Command},
-    pest_parser::{parse_commands, parse_file},
+    engine::EngineContext,
     regraph::{common::Set, rule::VariableRecord, table::Row},
+    syntax::Command,
+    syntax::pest_parser::{parse_commands, parse_file},
 };
 
 use directories::ProjectDirs;

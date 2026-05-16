@@ -1,9 +1,10 @@
-use alloc::boxed::Box;
+use alloc::vec;
 use alloc::vec::Vec;
+
 use smallvec::SmallVec;
 
 use crate::regraph::{
-    common::{ColumnIndex, Map, RowIndex, Set, TableName, Value},
+    common::{ColumnIndex, Map, RowIndex, Value},
     rule::{Constraint, Op},
     types::{BaseType, TableDef, Type},
     uf::UnionFind,
@@ -52,9 +53,8 @@ impl Column {
 
 #[derive(Debug, Clone)]
 pub struct Table {
-    pub name: TableName,
-    // pub rows: Vec<Value>,
-    pub columns: Box<[Column]>,
+    pub table_def: TableDef,
+    pub rows: Vec<Value>,
     pub key_index: Map<Row, RowIndex>,
     pub parents: Map<Value, Vec<RowIndex>>,
     pub row_count: usize,
@@ -62,18 +62,9 @@ pub struct Table {
 
 impl Table {
     pub fn new(table_def: TableDef) -> Self {
-        let mut col_types: Vec<_> = table_def.1.iter().map(Type::to_base_type).collect();
-        col_types.push(
-            table_def
-                .2
-                .as_ref()
-                .map(Type::to_base_type)
-                .unwrap_or(BaseType::Id),
-        );
-        let columns = col_types.iter().map(Column::from_base_type).collect();
         Self {
-            name: table_def.0,
-            columns,
+            table_def,
+            rows: vec![],
             key_index: Default::default(),
             parents: Default::default(),
             row_count: Default::default(),
@@ -81,328 +72,106 @@ impl Table {
     }
 
     pub fn arity(&self) -> usize {
-        self.column_count() - 1
+        self.table_def.1.len() - 1
     }
 
     pub fn column_count(&self) -> usize {
-        self.columns.len()
+        self.table_def.1.len()
     }
 
     pub fn row_count(&self) -> usize {
         self.row_count
     }
 
-    pub fn insert_row(&mut self, row: Row) {
-        debug_assert_eq!(row.0.len(), self.column_count());
-        self.row_count += 1;
-        for (col, val) in self.columns.iter_mut().zip(row.0.iter()) {
-            match col {
-                Column::Id(values) => values.push(*val),
-                Column::Str(values) => values.push(*val),
-                Column::I1(items) => items.push(val.0 != 0),
-                Column::I8(items) => items.push(val.0 as _),
-                Column::U8(items) => items.push(val.0 as _),
-                Column::I16(items) => items.push(val.0 as _),
-                Column::U16(items) => items.push(val.0 as _),
-                Column::I32(items) => items.push(val.0 as _),
-                Column::U32(items) => items.push(val.0 as _),
-                Column::I64(items) => items.push(val.0 as _),
-                Column::U64(items) => items.push(val.0),
-                Column::F32(items) => items.push(val.0 as _),
-                Column::F64(items) => items.push(val.0 as _),
-            }
+    pub fn insert(&mut self, uf: &mut UnionFind, mut key: Row, value: Value) {
+        debug_assert_eq!(key.0.len(), self.arity());
+        if let Some(r) = self.key_index.get(&key) {
+            // TODO: Conflict Merge!
+            let column = self.column_count();
+            let arity = self.arity();
+            let value_ref = &mut self.rows[r.0 * column + arity];
+            if let Some((_old, value)) = uf.union(*value_ref, value) {
+                *value_ref = value;
+            } else {
+                *value_ref = value;
+            };
+        } else {
+            // update key_index
+            self.key_index.insert(key.clone(), RowIndex(self.row_count));
+
+            // insert
+            key.0.push(value);
+            self.rows.extend(&key.0);
         }
+        self.row_count += 1;
     }
 
     pub fn fused_scan(
         &self,
         uf: &UnionFind,
-        find_column: ColumnIndex,
-        cs: &[Constraint],
-    ) -> Set<Value> {
-        match &self.columns[find_column.0] {
-            Column::Id(values) => values
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = uf.find(**v);
-                        let c_v = c.value;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => unreachable!(""),
-                            Op::Gt => unreachable!(""),
-                            Op::Leq => unreachable!(""),
-                            Op::Geq => unreachable!(""),
+        find_columns: &[ColumnIndex],
+        constraints: &[Constraint],
+    ) -> impl Iterator<Item = Row> {
+        self.rows
+            .chunks(self.column_count())
+            .map(|row| {
+                let row = row
+                    .iter()
+                    .zip(self.table_def.1.iter())
+                    .map(|(v, ty)| {
+                        if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                            uf.find(*v)
+                        } else {
+                            *v
                         }
                     })
+                    .collect();
+                Row(row)
+            })
+            .filter(|row| {
+                constraints.iter().all(|c| match c.op {
+                    Op::Equ => row.0[c.column.0] == c.value,
+                    Op::Neq => row.0[c.column.0] != c.value,
+                    Op::Lt => row.0[c.column.0] < c.value,
+                    Op::Gt => row.0[c.column.0] > c.value,
+                    Op::Leq => row.0[c.column.0] <= c.value,
+                    Op::Geq => row.0[c.column.0] >= c.value,
                 })
-                .cloned()
-                .collect(),
-            Column::Str(values) => values
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => unreachable!(""),
-                            Op::Gt => unreachable!(""),
-                            Op::Leq => unreachable!(""),
-                            Op::Geq => unreachable!(""),
-                        }
-                    })
-                })
-                .cloned()
-                .collect(),
-            Column::I1(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0 != 0;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => !v & c_v,
-                            Op::Gt => v & !c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value((*x) as u64))
-                .collect(),
-            Column::I8(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0 as i8;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value((*x) as u64))
-                .collect(),
-            Column::U8(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0 as u8;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value((*x) as u64))
-                .collect(),
-            Column::I16(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0 as i16;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value((*x) as u64))
-                .collect(),
-            Column::U16(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0 as u16;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value((*x) as u64))
-                .collect(),
-            Column::I32(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0 as i32;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value((*x) as u64))
-                .collect(),
-            Column::U32(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0 as u32;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value((*x) as u64))
-                .collect(),
-            Column::I64(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0 as i64;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value((*x) as u64))
-                .collect(),
-            Column::U64(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value(*x))
-                .collect(),
-            Column::F32(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0 as f32;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value((*x) as u64))
-                .collect(),
-            Column::F64(items) => items
-                .iter()
-                .filter(|v| {
-                    cs.iter().all(|c| {
-                        let v = **v;
-                        let c_v = c.value.0 as f64;
-                        match c.op {
-                            Op::Equ => v == c_v,
-                            Op::Neq => v != c_v,
-                            Op::Lt => v < c_v,
-                            Op::Gt => v > c_v,
-                            Op::Leq => v <= c_v,
-                            Op::Geq => v >= c_v,
-                        }
-                    })
-                })
-                .map(|x| Value((*x) as u64))
-                .collect(),
-        }
+            })
+            .map(|row| {
+                let row = find_columns.iter().map(|c| row.0[c.0]).collect();
+                Row(row)
+            })
     }
 
     #[inline]
     pub fn get_all_row(&self, row_index: RowIndex) -> Row {
-        Row(self
-            .columns
-            .iter()
-            .map(|col| match col {
-                Column::Id(values) => values.get(row_index.0).copied().unwrap(),
-                Column::Str(values) => values.get(row_index.0).copied().unwrap(),
-                Column::I1(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-                Column::I8(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-                Column::U8(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-                Column::I16(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-                Column::U16(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-                Column::I32(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-                Column::U32(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-                Column::I64(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-                Column::U64(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-                Column::F32(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-                Column::F64(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            })
-            .collect())
+        let start = row_index.0 * self.column_count();
+        let end = start + self.column_count();
+        Row(self.rows[start..end].into())
     }
 
-    pub fn get_result(&self, row_index: RowIndex) -> Value {
-        let column_index = ColumnIndex(self.columns.len() - 1);
-        self.get(column_index, row_index)
-    }
+    // pub fn get_result(&self, row_index: RowIndex) -> Value {
+    //     todo!()
+    // }
 
-    pub fn get(&self, column_index: ColumnIndex, row_index: RowIndex) -> Value {
-        match &self.columns[column_index.0] {
-            Column::Id(values) => values.get(row_index.0).copied().unwrap(),
-            Column::Str(values) => values.get(row_index.0).copied().unwrap(),
-            Column::I1(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            Column::I8(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            Column::U8(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            Column::I16(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            Column::U16(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            Column::I32(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            Column::U32(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            Column::I64(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            Column::U64(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            Column::F32(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-            Column::F64(items) => Value(items.get(row_index.0).copied().unwrap() as _),
-        }
-    }
+    // pub fn get(&self, column_index: ColumnIndex, row_index: RowIndex) -> Value {
+    //     match &self.columns[column_index.0] {
+    //         Column::Id(values) => values.get(row_index.0).copied().unwrap(),
+    //         Column::Str(values) => values.get(row_index.0).copied().unwrap(),
+    //         Column::I1(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //         Column::I8(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //         Column::U8(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //         Column::I16(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //         Column::U16(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //         Column::I32(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //         Column::U32(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //         Column::I64(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //         Column::U64(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //         Column::F32(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //         Column::F64(items) => Value(items.get(row_index.0).copied().unwrap() as _),
+    //     }
+    // }
 
     // pub fn get_row_and_result(&self, idx: RowIndex) -> (Row, Value) {
     //     let row = self.get_all_row(idx);

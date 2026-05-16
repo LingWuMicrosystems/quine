@@ -1,13 +1,10 @@
 use alloc::{boxed::Box, vec::Vec};
 
-use crate::{
-    engine::frontend::syntax::VarName,
-    regraph::{
-        common::{ColumnIndex, Map, Set, Value, VarId},
-        related_egraph::TableId,
-        table::Row,
-        types::Type,
-    },
+use crate::regraph::{
+    common::{ColumnIndex, Map, Set, Value, VarId, VarName},
+    related_egraph::TableId,
+    table::Row,
+    types::Type,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -37,6 +34,7 @@ pub enum Op {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Constraint {
     pub op: Op,
+    pub column: ColumnIndex,
     pub value: Value,
 }
 
@@ -53,24 +51,25 @@ pub struct Rule {
     pub action: Action,
 }
 
-/// table -> column -> constraints
-pub type VarColsScanRule = Box<[FusedScan]>;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query {
     pub variables: VariableRecord,
 
-    pub var_cols: Box<[VarColsScanRule]>,
+    pub scan_steps: Box<[ScanStep]>,
     pub constraints: Box<[CrossConstraint]>,
 }
 
 impl Query {
     pub fn tables(&self) -> Set<TableId> {
-        self.var_cols
-            .iter()
-            .flat_map(|v| v.iter().map(|f| f.table))
-            .collect()
+        self.scan_steps.iter().map(|s| s.table).collect()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScanStep {
+    pub table: TableId,
+    pub columns: Vec<(ColumnIndex, VarId)>,
+    pub constraints: Vec<Constraint>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -100,14 +99,6 @@ impl VariableRecord {
     pub fn get_type_from_name(&self, name: &VarName) -> Option<&Type> {
         self.get_offset(name).and_then(|i| self.get_type(i))
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FusedScan {
-    pub table: TableId,
-    pub column: ColumnIndex,
-    pub column_type: Type,
-    pub constraints: Box<[Constraint]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
