@@ -1,0 +1,24 @@
+data IRType
+    = Int(u16)
+    | Float(FloatFormat)
+    | Vec(IRType, u32)
+    | Array(IRType)
+    | FuncType(FuncType)
+    | Boxed(TypeId)
+    | Tuple(Tuple)
+    | SumType(SumType)
+
+data Tuple = Cons(IRType, Tuple) | Nil
+data SumType = Cons(Constructor, SumType) | Nil
+
+data Constructor = C(str, Tuple)
+
+data FloatFormat
+    = BF16
+    | F16
+    | F32
+    | F64
+    | Posit8
+    | Posit16
+    | Posit32
+    | Posit64
