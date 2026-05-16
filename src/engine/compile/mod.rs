@@ -33,11 +33,6 @@ impl EngineContext {
     ) -> Result<BackendCommand, CompileError> {
         match command {
             Command::TypeDef(name, type_def) => {
-                for cons in &type_def.1.0 {
-                    for ty in cons.1.iter() {
-                        self.check_type_defined(ty)?;
-                    }
-                }
                 let mut r = vec![];
                 for cons in &type_def.1.0 {
                     let table_name = format!("{}.{}", name.0, cons.0);

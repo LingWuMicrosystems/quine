@@ -1,1 +1,9 @@
-data
+data StringList = SCons(str, StringList) | SNil
+data ExprList = ECons(Expr, ExprList) | ENil
+data RegionList = RCons(Region, RegionList) | RNil
+
+data Expr
+    = Var(Expr)
+    | Const(i64)
+    | Op(str, ExprList, RegionList)
+    | Proj(u32, Expr)
