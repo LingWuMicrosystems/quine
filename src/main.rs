@@ -53,7 +53,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let mut ctx = EngineContext::default();
     let mut i = 1;
-    let mut enter_repl = true;
+    let mut has_file = false;
+    let mut force_repl = false;
 
     while i < args.len() {
         match args[i].as_str() {
@@ -66,8 +67,11 @@ fn main() {
                     }
                 }
             }
+            "--repl" => {
+                force_repl = true;
+            }
             file => {
-                enter_repl = false;
+                has_file = true;
                 match run_file(&mut ctx, file) {
                     Ok(()) => {}
                     Err(e) => eprintln!("error: {e}"),
@@ -76,6 +80,8 @@ fn main() {
         }
         i += 1;
     }
+
+    let enter_repl = !has_file || force_repl;
 
     if enter_repl {
         run_repl(&mut ctx);
