@@ -386,12 +386,7 @@ impl Display for TableDef {
             f,
             "table {}",
             TypeConstructor(self.0.clone(), self.1.clone())
-        )?;
-        if let Some(ret) = &self.2 {
-            write!(f, " -> {ret}")?;
-        }
-
-        Ok(())
+        )
     }
 }
 
@@ -430,12 +425,16 @@ impl Display for Command {
             Command::Query(heads, vars) => {
                 write!(f, "query ")?;
                 for (idx, head) in heads.iter().enumerate() {
-                    if idx != 0 { write!(f, ", ")?; }
+                    if idx != 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{head}")?;
                 }
                 write!(f, " print(")?;
                 for (idx, v) in vars.iter().enumerate() {
-                    if idx != 0 { write!(f, ", ")?; }
+                    if idx != 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{v}")?;
                 }
                 write!(f, ")")

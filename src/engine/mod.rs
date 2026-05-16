@@ -18,7 +18,6 @@ use crate::engine::interner::Interner;
 use crate::engine::term::Term;
 use crate::regraph::common::{Atom, Map, Name, Set, TypeName, Value};
 use crate::regraph::related_egraph::NativeFn;
-use crate::regraph::table::Column;
 use crate::regraph::types::{BaseType, SumType, TableDef, Type, TypeDef};
 
 #[derive(Debug, Clone)]
@@ -47,7 +46,7 @@ impl Default for EngineContext {
         let mut data_types = CompileEnv::default();
         let _ = data_types.insert(TypeName("Unit".to_owned()), unit_type.clone());
 
-        let unit_table = TableDef("Unit".to_owned(), Box::new([]), None);
+        let unit_table = TableDef("Unit".to_owned(), Box::new([Type::Base(BaseType::Id)]));
         let mut table_types = TableEnv::default();
         let mut regraph = RelatedEGraph::default();
         let _ = table_types.insert("Unit".to_owned(), unit_table.clone());
@@ -141,9 +140,9 @@ impl EngineContext {
     }
 
     pub fn extract(&self, id: Value, ty: &Type) -> Term {
-        let id = self.regraph.find(id);
         let base = ty.to_base_type();
         if matches!(base, BaseType::Id) {
+            let id = self.regraph.find(id);
             let mut visited = Set::default();
             self.extract_inner(id, &mut visited)
         } else {
@@ -165,17 +164,17 @@ impl EngineContext {
         let mut children = Vec::new();
 
         for (i, v) in row.0[..table.arity()].iter().enumerate() {
-            let child = match &table.columns[i] {
-                Column::Id(_) => self.extract_inner(self.regraph.find(*v), visited),
-                col => {
-                    let base = column_to_base_type(col);
-                    Term::Literal(self.atom_from_value(*v, &base))
-                }
+            let ty = &table.table_def.1[i];
+            let child = if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                self.extract_inner(self.regraph.find(*v), visited)
+            } else {
+                let base = ty.to_base_type();
+                Term::Literal(self.atom_from_value(*v, &base))
             };
             children.push(child);
         }
 
-        Term::App(table.name.clone(), children)
+        Term::App(table.table_def.0.clone(), children)
     }
 
     fn atom_from_value(&self, v: Value, base: &BaseType) -> Atom {
@@ -189,34 +188,16 @@ impl EngineContext {
                 }
             }
             BaseType::I1 => Atom::Bool(v.0 != 0),
-            BaseType::I8 => Atom::I8(v.0 as i8),
+            BaseType::I8 => Atom::I8(v.decode_i8()),
             BaseType::U8 => Atom::U8(v.0 as u8),
-            BaseType::I16 => Atom::I16(v.0 as i16),
+            BaseType::I16 => Atom::I16(v.decode_i16()),
             BaseType::U16 => Atom::U16(v.0 as u16),
-            BaseType::I32 => Atom::I32(v.0 as i32),
+            BaseType::I32 => Atom::I32(v.decode_i32()),
             BaseType::U32 => Atom::U32(v.0 as u32),
-            BaseType::I64 => Atom::I64(v.0 as i64),
+            BaseType::I64 => Atom::I64(v.decode_i64()),
             BaseType::U64 => Atom::U64(v.0),
-            BaseType::F32 => Atom::F32(v.0 as u32),
-            BaseType::F64 => Atom::F64(v.0),
+            BaseType::F32 => Atom::F32(v.decode_f32().to_bits()),
+            BaseType::F64 => Atom::F64(v.decode_f64().to_bits()),
         }
-    }
-}
-
-fn column_to_base_type(col: &Column) -> BaseType {
-    match col {
-        Column::Id(_) => BaseType::Id,
-        Column::Str(_) => BaseType::Str,
-        Column::I1(_) => BaseType::I1,
-        Column::I8(_) => BaseType::I8,
-        Column::U8(_) => BaseType::U8,
-        Column::I16(_) => BaseType::I16,
-        Column::U16(_) => BaseType::U16,
-        Column::I32(_) => BaseType::I32,
-        Column::U32(_) => BaseType::U32,
-        Column::I64(_) => BaseType::I64,
-        Column::U64(_) => BaseType::U64,
-        Column::F32(_) => BaseType::F32,
-        Column::F64(_) => BaseType::F64,
     }
 }

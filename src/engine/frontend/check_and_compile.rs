@@ -8,6 +8,7 @@ use crate::engine::frontend::body2action::{CompileCtx, bodys2action};
 use crate::engine::frontend::head2query::heads2query;
 use crate::regraph::common::TypeName;
 use crate::regraph::rule;
+use crate::regraph::types::BaseType;
 use crate::regraph::types::{TableDef, Type};
 use crate::{
     engine::command::BackendCommand,
@@ -30,7 +31,9 @@ impl EngineContext {
                 let mut r = vec![];
                 for cons in &type_def.1.0 {
                     let table_name = format!("{}.{}", name.0, cons.0);
-                    let table_def = TableDef(table_name.clone(), cons.1.clone(), None);
+                    let mut cols: Vec<Type> = cons.1.to_vec();
+                    cols.push(Type::Base(BaseType::Id));
+                    let table_def = TableDef(table_name.clone(), cols.into());
                     self.table_types.insert(table_name, table_def.clone())?;
                     r.push(table_def);
                 }
@@ -40,9 +43,6 @@ impl EngineContext {
             Command::TableDef(name, table_def) => {
                 for ty in table_def.1.iter() {
                     self.check_type_defined(ty)?;
-                }
-                if let Some(ret) = &table_def.2 {
-                    self.check_type_defined(ret)?;
                 }
                 self.table_types.insert(name, table_def.clone())?;
                 Ok(BackendCommand::AddTables(vec![table_def]))
@@ -61,7 +61,12 @@ impl EngineContext {
                 Ok(BackendCommand::Action(bodys2action(&mut ctx, &fact)?))
             }
             Command::Query(heads, vars) => Ok(BackendCommand::Query(
-                heads2query(&heads, &self.table_types, &self.data_types, &mut self.interner)?,
+                heads2query(
+                    &heads,
+                    &self.table_types,
+                    &self.data_types,
+                    &mut self.interner,
+                )?,
                 vars,
             )),
             Command::Run => Ok(BackendCommand::Run),

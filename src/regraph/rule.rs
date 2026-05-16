@@ -37,6 +37,7 @@ pub enum Op {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Constraint {
     pub op: Op,
+    pub column: ColumnIndex,
     pub value: Value,
 }
 
@@ -53,24 +54,30 @@ pub struct Rule {
     pub action: Action,
 }
 
-/// table -> column -> constraints
-pub type VarColsScanRule = Box<[FusedScan]>;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query {
     pub variables: VariableRecord,
 
-    pub var_cols: Box<[VarColsScanRule]>,
+    /// 每个 Head::Match 对应一个 ScanStep，按 heads 中的顺序
+    pub scan_steps: Box<[ScanStep]>,
+
+    /// 跨变量约束（Guard var-vs-var, LetEq 等）
     pub constraints: Box<[CrossConstraint]>,
 }
 
 impl Query {
     pub fn tables(&self) -> Set<TableId> {
-        self.var_cols
-            .iter()
-            .flat_map(|v| v.iter().map(|f| f.table))
-            .collect()
+        self.scan_steps.iter().map(|s| s.table).collect()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScanStep {
+    pub table: TableId,
+    /// (表列, 变量 VarId)
+    pub columns: Vec<(ColumnIndex, VarId)>,
+    /// 本地约束（原子值等值、Guard var-vs-atom）
+    pub constraints: Vec<Constraint>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -100,14 +107,6 @@ impl VariableRecord {
     pub fn get_type_from_name(&self, name: &VarName) -> Option<&Type> {
         self.get_offset(name).and_then(|i| self.get_type(i))
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FusedScan {
-    pub table: TableId,
-    pub column: ColumnIndex,
-    pub column_type: Type,
-    pub constraints: Box<[Constraint]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

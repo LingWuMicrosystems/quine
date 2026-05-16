@@ -13,9 +13,8 @@ pub struct SumType(pub Box<[TypeConstructor]>);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeConstructor(pub Name, pub Box<[Type]>);
 
-/// if TableDef.2 is Some, then it is a function type, otherwise it is a relation type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TableDef(pub Name, pub Box<[Type]>, pub Option<Type>);
+pub struct TableDef(pub Name, pub Box<[Type]>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {

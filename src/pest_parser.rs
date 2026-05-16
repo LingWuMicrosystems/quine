@@ -213,8 +213,9 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
         Rule::relation_def => {
             let mut parts = inner.into_inner();
             let name = parse_variable(parts.next().unwrap());
-            let types: Box<[Type]> = parts.map(parse_type).collect();
-            Command::TableDef(name.clone(), TableDef(name, types, None))
+            let mut types: Vec<_> = parts.map(parse_type).collect();
+            types.push(Type::Base(BaseType::Id));
+            Command::TableDef(name.clone(), TableDef(name, types.into()))
         }
         Rule::function_def => {
             let mut parts = inner.into_inner();
@@ -225,8 +226,7 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
                     types.push(parse_type(part));
                 }
             }
-            let ret = types.pop();
-            Command::TableDef(name.clone(), TableDef(name, types.into(), ret))
+            Command::TableDef(name.clone(), TableDef(name, types.into()))
         }
         Rule::rule => {
             let mut parts = inner.into_inner();
@@ -241,10 +241,6 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
         Rule::query => {
             let mut parts = inner.into_inner();
             let heads = parse_heads(parts.next().unwrap());
-            // skip "print" keyword token
-            parts.next();
-            // skip "(" token
-            parts.next();
             let vars: Vec<_> = parts.map(|p| parse_variable(p)).collect();
             Command::Query(heads, vars)
         }
