@@ -72,7 +72,7 @@ pub fn heads2query(
                 ctx.guard_cmps
                     .entry(VarId(offset))
                     .or_default()
-                    .insert((*op, atom_to_value(a, ctx.interner)));
+                    .insert((*op, atom_to_value(a.clone(), ctx.interner)));
             }
             Head::Guard(_, op, lhs, AtomOrVariable::Variable(rhs)) => {
                 let Some(lhs_offset) = ctx.variables.get_offset(lhs) else {
@@ -132,7 +132,7 @@ pub fn heads2query(
                 ctx.guard_cmps
                     .entry(VarId(offset))
                     .or_default()
-                    .insert((Op::Equ, atom_to_value(a, ctx.interner)));
+                    .insert((Op::Equ, atom_to_value(a.clone(), ctx.interner)));
             }
             Head::LetEq(_, pattern, pattern1) => {
                 let defined_type = Type::Base(BaseType::Id);
@@ -259,7 +259,7 @@ fn check_and_compile_pattern(
                     .push(Constraint {
                         op: Op::Equ,
                         column: col,
-                        value: atom_to_value(atom, ctx.interner),
+                        value: atom_to_value(atom.clone(), ctx.interner),
                     });
             }
             Ok(Some(var))

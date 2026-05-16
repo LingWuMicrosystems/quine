@@ -1,7 +1,6 @@
-use quine_core::{
-    common::{Atom, ColumnIndex},
-    types::Type,
-};
+use quine_core::{common::ColumnIndex, types::Type};
+
+use crate::syntax::Atom;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CompileError {

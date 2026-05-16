@@ -11,14 +11,7 @@ use crate::engine::compile::body2action::{CompileCtx, bodys2action};
 use crate::engine::compile::head2query::heads2query;
 use crate::engine::error::CompileError;
 use crate::engine::interner::Interner;
-use crate::syntax::{self, Command};
-
-pub fn atom_to_value(atom: &Atom, interner: &mut Interner) -> Value {
-    match atom {
-        Atom::Str(s) => Value(interner.intern(s.clone()) as u64),
-        other => other.to_value(),
-    }
-}
+use crate::syntax::{self, Atom, Command};
 
 impl EngineContext {
     pub fn check_and_compile_command(
@@ -99,5 +92,23 @@ impl EngineContext {
         };
         let action = bodys2action(&mut ctx, &rule.bodys)?;
         Ok(rule::Rule { query, action })
+    }
+}
+
+pub fn atom_to_value(atom: Atom, interner: &mut Interner) -> Value {
+    match atom {
+        Atom::Str(s) => Value(interner.intern(s.clone()) as u64),
+        Atom::I8(i) => Value::encode_i8(i),
+        Atom::I16(i) => Value::encode_i16(i),
+        Atom::I32(i) => Value::encode_i32(i),
+        Atom::I64(i) => Value::encode_i64(i),
+        Atom::U8(u) => Value(u as u64),
+        Atom::U16(u) => Value(u as u64),
+        Atom::U32(u) => Value(u as u64),
+
+        Atom::U64(u) => Value(u),
+        Atom::Bool(b) => Value(if b { 1u64 } else { 0u64 }),
+        Atom::F32(bits) => Value::encode_f32(f32::from_bits(bits)),
+        Atom::F64(bits) => Value::encode_f64(f64::from_bits(bits)),
     }
 }

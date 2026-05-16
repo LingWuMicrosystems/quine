@@ -1,9 +1,9 @@
 use pest::Parser;
 use pest_derive::Parser;
-use quine_core::{common::Atom, rule::Op, types::*};
+use quine_core::{rule::Op, types::*};
 
 use crate::syntax::{
-    AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
+    Atom, AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
     Rule as SyntaxRule, Span,
 };
 

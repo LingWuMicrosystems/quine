@@ -126,7 +126,10 @@ fn atom_or_variable_transform(
     a: &AtomOrVariable,
 ) -> Result<rule::ValueOrVariable, CompileError> {
     match a {
-        AtomOrVariable::Atom(a) => Ok(ValueOrVariable::Value(atom_to_value(a, ctx.interner))),
+        AtomOrVariable::Atom(a) => Ok(ValueOrVariable::Value(atom_to_value(
+            a.clone(),
+            ctx.interner,
+        ))),
         AtomOrVariable::Variable(v) => {
             if let Some(offset) = ctx.head_variables.get_offset(v) {
                 Ok(ValueOrVariable::Variable(VarId(offset)))

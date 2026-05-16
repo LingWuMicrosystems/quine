@@ -6,7 +6,7 @@ pub mod interner;
 pub mod prelude;
 pub mod term;
 
-use quine_core::common::{Atom, Map, Set, Value};
+use quine_core::common::{Map, Set, Value};
 use quine_core::related_egraph::{NativeFn, RelatedEGraph};
 use quine_core::rule::VariableRecord;
 use quine_core::table::Row;
@@ -23,6 +23,7 @@ pub struct NativeSignature {
     pub ret: BaseType,
 }
 use crate::engine::{command::BackendCommand, env::CompileEnv};
+use crate::syntax::Atom;
 
 #[derive(Debug, Clone)]
 pub struct EngineContext {

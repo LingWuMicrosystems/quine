@@ -1,6 +1,6 @@
 use core::fmt::Display;
 
-use quine_core::common::Atom;
+use crate::syntax::Atom;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
