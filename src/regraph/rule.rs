@@ -1,13 +1,10 @@
 use alloc::{boxed::Box, vec::Vec};
 
-use crate::{
-    engine::frontend::syntax::VarName,
-    regraph::{
-        common::{ColumnIndex, Map, Set, Value, VarId},
-        related_egraph::TableId,
-        table::Row,
-        types::Type,
-    },
+use crate::regraph::{
+    common::{ColumnIndex, Map, Set, Value, VarId, VarName},
+    related_egraph::TableId,
+    table::Row,
+    types::Type,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -58,10 +55,7 @@ pub struct Rule {
 pub struct Query {
     pub variables: VariableRecord,
 
-    /// 每个 Head::Match 对应一个 ScanStep，按 heads 中的顺序
     pub scan_steps: Box<[ScanStep]>,
-
-    /// 跨变量约束（Guard var-vs-var, LetEq 等）
     pub constraints: Box<[CrossConstraint]>,
 }
 
@@ -74,9 +68,7 @@ impl Query {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScanStep {
     pub table: TableId,
-    /// (表列, 变量 VarId)
     pub columns: Vec<(ColumnIndex, VarId)>,
-    /// 本地约束（原子值等值、Guard var-vs-atom）
     pub constraints: Vec<Constraint>,
 }
 

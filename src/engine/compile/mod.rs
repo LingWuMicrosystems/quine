@@ -1,20 +1,30 @@
+pub mod body2action;
+pub mod head2query;
+
 use alloc::format;
 use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::engine::EngineContext;
+use crate::engine::command::BackendCommand;
+use crate::engine::compile::body2action::{CompileCtx, bodys2action};
+use crate::engine::compile::head2query::heads2query;
 use crate::engine::error::CompileError;
-use crate::engine::frontend::body2action::{CompileCtx, bodys2action};
-use crate::engine::frontend::head2query::heads2query;
+use crate::engine::interner::Interner;
 use crate::regraph::common::TypeName;
+use crate::regraph::common::{Atom, Value};
 use crate::regraph::rule;
+use crate::regraph::rule::VariableRecord;
 use crate::regraph::types::BaseType;
 use crate::regraph::types::{TableDef, Type};
-use crate::{
-    engine::command::BackendCommand,
-    engine::frontend::syntax::{self, Command},
-    regraph::rule::VariableRecord,
-};
+use crate::syntax::{self, Command};
+
+pub fn atom_to_value(atom: &Atom, interner: &mut Interner) -> Value {
+    match atom {
+        Atom::Str(s) => Value(interner.intern(s.clone()) as u64),
+        other => other.to_value(),
+    }
+}
 
 impl EngineContext {
     pub fn check_and_compile_command(

@@ -82,6 +82,7 @@ pub struct VarId(pub usize);
 
 // #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 // pub struct VarName(pub Name);
+pub type VarName = Name;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeName(pub Name);

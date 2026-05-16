@@ -3,12 +3,9 @@ use alloc::vec::Vec;
 
 use crate::{
     engine::{
+        compile::atom_to_value,
         env::{DataTypeEnv, TableEnv},
         error::CompileError,
-        frontend::{
-            syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
-            utils::atom_to_value,
-        },
         interner::Interner,
     },
     regraph::{
@@ -16,6 +13,7 @@ use crate::{
         rule::{Constraint, CrossConstraint, Op, Query, ScanStep, VariableRecord},
         types::{BaseType, Type},
     },
+    syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
 };
 
 struct QueryCtx<'a> {
@@ -23,13 +21,10 @@ struct QueryCtx<'a> {
     data_types: &'a DataTypeEnv,
     variables: &'a mut VariableRecord,
     scan_steps: &'a mut Vec<ScanStep>,
-    /// 变量来自哪些 scan step（用于下推 guard 约束和查找 join key）
     var_to_steps: &'a mut Map<VarId, Vec<usize>>,
-    /// 非列上下文中的 Guard/LetEq 约束（op, value），后续按 var→column 下推到 scan step
     guard_cmps: &'a mut Map<VarId, Set<(Op, Value)>>,
     constraints: &'a mut Set<CrossConstraint>,
     interner: &'a mut Interner,
-    /// 当前正在编译的 scan step 索引
     current_step: usize,
 }
 
@@ -59,10 +54,10 @@ pub fn heads2query(
 
     for head in heads {
         match head {
-            Head::Match(constructor_pattern) => {
+            Head::Match(_, constructor_pattern) => {
                 check_and_compile_con_pattern(&mut ctx, constructor_pattern, false)?;
             }
-            Head::Guard(op, var, AtomOrVariable::Atom(a)) => {
+            Head::Guard(_, op, var, AtomOrVariable::Atom(a)) => {
                 let Some(offset) = ctx.variables.get_offset(var) else {
                     return Err(CompileError::VariableNotDefine(var.clone()));
                 };
@@ -85,7 +80,7 @@ pub fn heads2query(
                     .or_default()
                     .insert((*op, atom_to_value(a, ctx.interner)));
             }
-            Head::Guard(op, lhs, AtomOrVariable::Variable(rhs)) => {
+            Head::Guard(_, op, lhs, AtomOrVariable::Variable(rhs)) => {
                 let Some(lhs_offset) = ctx.variables.get_offset(lhs) else {
                     return Err(CompileError::VariableNotDefine(lhs.clone()));
                 };
@@ -103,7 +98,7 @@ pub fn heads2query(
                     rhs: VarId(rhs_offset),
                 });
             }
-            Head::LetEq(Pattern::Variable(lhs), Pattern::Variable(rhs)) => {
+            Head::LetEq(_, Pattern::Variable(_, lhs), Pattern::Variable(_, rhs)) => {
                 let Some(lhs_offset) = ctx.variables.get_offset(lhs) else {
                     return Err(CompileError::VariableNotDefine(lhs.clone()));
                 };
@@ -121,8 +116,8 @@ pub fn heads2query(
                     rhs: VarId(rhs_offset),
                 });
             }
-            Head::LetEq(Pattern::Atom(a), Pattern::Variable(var))
-            | Head::LetEq(Pattern::Variable(var), Pattern::Atom(a)) => {
+            Head::LetEq(_, Pattern::Atom(_, a), Pattern::Variable(_, var))
+            | Head::LetEq(_, Pattern::Variable(_, var), Pattern::Atom(_, a)) => {
                 let Some(offset) = ctx.variables.get_offset(var) else {
                     return Err(CompileError::VariableNotDefine(var.clone()));
                 };
@@ -145,15 +140,13 @@ pub fn heads2query(
                     .or_default()
                     .insert((Op::Equ, atom_to_value(a, ctx.interner)));
             }
-            Head::LetEq(pattern, pattern1) => {
+            Head::LetEq(_, pattern, pattern1) => {
                 let defined_type = Type::Base(BaseType::Id);
-                let Some(lhs) =
-                    check_and_compile_pattern(&mut ctx, pattern, &defined_type, None)?
+                let Some(lhs) = check_and_compile_pattern(&mut ctx, pattern, &defined_type, None)?
                 else {
                     continue;
                 };
-                let Some(rhs) =
-                    check_and_compile_pattern(&mut ctx, pattern1, &defined_type, None)?
+                let Some(rhs) = check_and_compile_pattern(&mut ctx, pattern1, &defined_type, None)?
                 else {
                     continue;
                 };
@@ -166,7 +159,7 @@ pub fn heads2query(
         }
     }
 
-    // 将 guard_cmps 下推到 scan step constraints 中
+    // push guard_cmps down into scan step constraints
     let guard_cmps = core::mem::take(ctx.guard_cmps);
     for (var, cmps) in guard_cmps {
         if let Some(step_indices) = ctx.var_to_steps.get(&var) {
@@ -199,14 +192,14 @@ fn check_and_compile_con_pattern(
 ) -> Result<Option<VarId>, CompileError> {
     let table_id = ctx
         .table_env
-        .get_offset(&constructor_pattern.0)
-        .ok_or_else(|| CompileError::InvalidTableName(constructor_pattern.0.clone()))?;
+        .get_offset(&constructor_pattern.name)
+        .ok_or_else(|| CompileError::InvalidTableName(constructor_pattern.name.clone()))?;
     let table = &ctx.table_env.tables[table_id];
 
     let arity = table.1.len().saturating_sub(1);
-    if arity != constructor_pattern.1.len() {
+    if arity != constructor_pattern.args.len() {
         return Err(CompileError::InvalidTableWidth(
-            constructor_pattern.1.len(),
+            constructor_pattern.args.len(),
             arity,
         ));
     }
@@ -220,23 +213,19 @@ fn check_and_compile_con_pattern(
         constraints: Vec::new(),
     });
 
-    for (col, pattern) in constructor_pattern.1.iter().enumerate() {
+    for (col, pattern) in constructor_pattern.args.iter().enumerate() {
         let ty = &table.1[col];
-        if let Some(var) =
-            check_and_compile_pattern(ctx, pattern, ty, Some(ColumnIndex(col)))?
-        {
-            ctx.scan_steps[step_idx].columns.push((ColumnIndex(col), var));
+        if let Some(var) = check_and_compile_pattern(ctx, pattern, ty, Some(ColumnIndex(col)))? {
+            ctx.scan_steps[step_idx]
+                .columns
+                .push((ColumnIndex(col), var));
             ctx.var_to_steps.entry(var).or_default().push(step_idx);
         }
     }
 
     if get_result {
         let result_col = ColumnIndex(arity);
-        let result_ty = table
-            .1
-            .last()
-            .cloned()
-            .unwrap_or(Type::Base(BaseType::Id));
+        let result_ty = table.1.last().cloned().unwrap_or(Type::Base(BaseType::Id));
         let res = ctx.variables.insert_var(None, result_ty);
         ctx.scan_steps[step_idx].columns.push((result_col, res));
         ctx.var_to_steps.entry(res).or_default().push(step_idx);
@@ -255,8 +244,8 @@ fn check_and_compile_pattern(
     column: Option<ColumnIndex>,
 ) -> Result<Option<VarId>, CompileError> {
     match pattern {
-        Pattern::Wildcard => Ok(None),
-        Pattern::Atom(atom) => {
+        Pattern::Wildcard(_) => Ok(None),
+        Pattern::Atom(_, atom) => {
             let Type::Base(def_ty) = defined_type else {
                 return Err(CompileError::InvalidAtomType(
                     atom.clone(),
@@ -279,11 +268,9 @@ fn check_and_compile_pattern(
                         value: atom_to_value(atom, ctx.interner),
                     });
             }
-            // 无 column 时（LetEq 非简单模式），不添加约束；
-            // LetEq 的 CrossConstraint 处理等值
             Ok(Some(var))
         }
-        Pattern::Variable(name) => {
+        Pattern::Variable(_, name) => {
             if let Some(offset) = ctx.variables.get_offset(name) {
                 Ok(Some(VarId(offset)))
             } else {
@@ -293,21 +280,19 @@ fn check_and_compile_pattern(
                 ))
             }
         }
-        Pattern::Constructor(constructor_pattern) => {
+        Pattern::Constructor(_, constructor_pattern) => {
             let Type::Name(expected_name) = defined_type else {
                 return Err(CompileError::TypeCheckError(
                     defined_type.clone(),
-                    Type::Name(constructor_pattern.0.clone()),
+                    Type::Name(constructor_pattern.name.clone()),
                 ));
             };
             let cons_name =
-                ConstructorName(format!("{}.{}", expected_name, constructor_pattern.0));
+                ConstructorName(format!("{}.{}", expected_name, constructor_pattern.name));
             let cons_type = ctx
                 .data_types
                 .get_constructor_type(&cons_name)
-                .ok_or_else(|| {
-                    CompileError::InvalidTableName(constructor_pattern.0.clone())
-                })?;
+                .ok_or_else(|| CompileError::InvalidTableName(constructor_pattern.name.clone()))?;
             if cons_type.0 != *expected_name {
                 return Err(CompileError::TypeCheckError(
                     Type::Name(expected_name.clone()),

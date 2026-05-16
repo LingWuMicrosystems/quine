@@ -1,3 +1,5 @@
+pub mod pest_parser;
+
 use alloc::boxed::Box;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -8,6 +10,18 @@ use crate::regraph::{
     rule::Op,
     types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
 };
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Span {
+    pub const fn new(start: usize, end: usize) -> Self {
+        Span { start, end }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Command {
@@ -35,21 +49,25 @@ pub trait VarExtractor {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Head {
-    Match(ConstructorPattern),
-    LetEq(Pattern, Pattern),
-    Guard(Op, VarName, AtomOrVariable),
+    Match(Span, ConstructorPattern),
+    LetEq(Span, Pattern, Pattern),
+    Guard(Span, Op, VarName, AtomOrVariable),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Pattern {
-    Wildcard,
-    Atom(Atom),
-    Variable(VarName),
-    Constructor(ConstructorPattern),
+    Wildcard(Span),
+    Atom(Span, Atom),
+    Variable(Span, VarName),
+    Constructor(Span, ConstructorPattern),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ConstructorPattern(pub Name, pub Box<[Pattern]>);
+pub struct ConstructorPattern {
+    pub name: Name,
+    pub args: Box<[Pattern]>,
+    pub span: Span,
+}
 
 // #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 // pub enum Op {
@@ -141,9 +159,9 @@ impl VarExtractor for AtomOrVariable {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Body {
-    Let(VarName, FunctionCall),
-    Insert(FunctionCall, Option<Expr>),
-    Union(Expr, Expr),
+    Let(Span, VarName, FunctionCall),
+    Insert(Span, FunctionCall, Option<Expr>),
+    Union(Span, Expr, Expr),
 }
 
 pub type Function = Name;
@@ -205,7 +223,7 @@ impl Display for Expr {
 impl Display for Body {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Body::Insert(call, expr) => {
+            Body::Insert(_, call, expr) => {
                 write!(f, "set {call}")?;
 
                 if let Some(expr) = expr {
@@ -214,13 +232,13 @@ impl Display for Body {
 
                 Ok(())
             }
-            Body::Union(l, r) => {
+            Body::Union(_, l, r) => {
                 write!(f, "union ")?;
                 l.fmt_internal(f, true)?;
                 write!(f, " with ")?;
                 r.fmt_internal(f, true)
             }
-            Body::Let(name, call) => {
+            Body::Let(_, name, call) => {
                 write!(f, "let {name} = {call}")
             }
         }
@@ -230,46 +248,27 @@ impl Display for Body {
 impl Pattern {
     fn fmt_internal(&self, f: &mut core::fmt::Formatter<'_>, paren: bool) -> core::fmt::Result {
         match self {
-            Pattern::Wildcard => write!(f, "_"),
-            Pattern::Atom(a) => write!(f, "{a}"),
-            Pattern::Variable(v) => write!(f, "{v}"),
-            Pattern::Constructor(ConstructorPattern(g, args)) => {
-                if paren && !args.is_empty() {
-                    write!(f, "(")?;
-                }
-
-                write!(f, "{g}")?;
-                for arg in args {
-                    write!(f, " ")?;
-                    arg.fmt_internal(f, true)?;
-                }
-
-                if paren && !args.is_empty() {
-                    write!(f, ")")?;
-                }
-
-                Ok(())
-            }
+            Pattern::Wildcard(_) => write!(f, "_"),
+            Pattern::Atom(_, a) => write!(f, "{a}"),
+            Pattern::Variable(_, v) => write!(f, "{v}"),
+            Pattern::Constructor(_, cp) => cp.fmt_internal(f, paren),
         }
     }
 }
 
 impl ConstructorPattern {
     fn fmt_internal(&self, f: &mut core::fmt::Formatter<'_>, paren: bool) -> core::fmt::Result {
-        let g = &self.0;
-        let args = &self.1;
-
-        if paren && !args.is_empty() {
+        if paren && !self.args.is_empty() {
             write!(f, "(")?;
         }
 
-        write!(f, "{g}")?;
-        for arg in args {
+        write!(f, "{}", self.name)?;
+        for arg in self.args.iter() {
             write!(f, " ")?;
             arg.fmt_internal(f, true)?;
         }
 
-        if paren && !args.is_empty() {
+        if paren && !self.args.is_empty() {
             write!(f, ")")?;
         }
 
@@ -307,14 +306,14 @@ impl Display for Op {
 impl Display for Head {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Head::Match(p) => write!(f, "{p}"),
-            Head::LetEq(l, r) => {
+            Head::Match(_, p) => write!(f, "{p}"),
+            Head::LetEq(_, l, r) => {
                 write!(f, "leteq ")?;
                 l.fmt_internal(f, true)?;
                 write!(f, " <- ")?;
                 r.fmt_internal(f, true)
             }
-            Head::Guard(op, l, r) => {
+            Head::Guard(_, op, l, r) => {
                 write!(f, "if {}", l)?;
                 write!(f, " {op} {}", r)?;
                 Ok(())

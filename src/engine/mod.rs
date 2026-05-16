@@ -1,7 +1,7 @@
 pub mod command;
+pub mod compile;
 pub mod env;
 pub mod error;
-pub mod frontend;
 pub mod interner;
 pub mod prelude;
 pub mod term;
