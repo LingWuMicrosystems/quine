@@ -1,7 +1,9 @@
-use alloc::{boxed::Box, vec::Vec};
+use core::fmt::Display;
 
-use crate::regraph::{
-    common::{ColumnIndex, Map, Set, Value, VarId, VarName},
+use alloc::{boxed::Box, string::String, vec::Vec};
+
+use crate::{
+    common::{ColumnIndex, Map, Set, Value, VarId},
     related_egraph::TableId,
     table::Row,
     types::Type,
@@ -17,19 +19,20 @@ pub enum Op {
     Geq,
 }
 
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-// pub enum Op {
-//     Equ,
-//     Neq,
-//     Lt,
-//     Gt,
-//     Leq,
-//     Geq,
-//     Ltu,
-//     Gtu,
-//     Lequ,
-//     Gequ,
-// }
+impl Display for Op {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let display = match self {
+            Op::Equ => "=",
+            Op::Neq => "!=",
+            Op::Lt => "<",
+            Op::Gt => ">",
+            Op::Leq => "<=",
+            Op::Geq => ">=",
+        };
+
+        write!(f, "{}", display)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Constraint {
@@ -75,11 +78,11 @@ pub struct ScanStep {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct VariableRecord {
     variables: Vec<Type>,
-    pub names_map: Map<VarName, usize>,
+    pub names_map: Map<String, usize>,
 }
 
 impl VariableRecord {
-    pub fn insert_var(&mut self, name: Option<VarName>, ty: Type) -> VarId {
+    pub fn insert_var(&mut self, name: Option<String>, ty: Type) -> VarId {
         let i = self.variables.len();
         self.variables.push(ty);
         if let Some(name) = name {
@@ -88,7 +91,7 @@ impl VariableRecord {
         VarId(i)
     }
 
-    pub fn get_offset(&self, name: &VarName) -> Option<usize> {
+    pub fn get_offset(&self, name: &String) -> Option<usize> {
         self.names_map.get(name).copied()
     }
 
@@ -96,7 +99,7 @@ impl VariableRecord {
         self.variables.get(offset)
     }
 
-    pub fn get_type_from_name(&self, name: &VarName) -> Option<&Type> {
+    pub fn get_type_from_name(&self, name: &String) -> Option<&Type> {
         self.get_offset(name).and_then(|i| self.get_type(i))
     }
 }

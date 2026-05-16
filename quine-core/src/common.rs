@@ -3,7 +3,7 @@ use core::fmt::Display;
 use alloc::string::String;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::regraph::types::BaseType;
+use crate::types::BaseType;
 
 const SIGN_BIT: u64 = 0x8000_0000_0000_0000;
 
@@ -82,21 +82,11 @@ pub struct VarId(pub usize);
 
 // #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 // pub struct VarName(pub Name);
-pub type VarName = Name;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TypeName(pub Name);
-
-pub type TableName = Name;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ConstructorName(pub Name);
-
-pub type Name = String;
 
 pub type Map<K, V> = FxHashMap<K, V>;
 pub type Set<K> = FxHashSet<K>;
 
+// FIXME: move it
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Atom {
     Bool(bool),

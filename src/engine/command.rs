@@ -1,7 +1,4 @@
-use alloc::vec::Vec;
-
-use crate::regraph::{
-    common::VarName,
+use quine_core::{
     rule::{Action, Query, Rule},
     types::TableDef,
 };
@@ -12,5 +9,5 @@ pub enum BackendCommand {
     AddRule(Rule),
     Action(Action),
     Run,
-    Query(Query, Vec<VarName>),
+    Query(Query, Vec<String>),
 }

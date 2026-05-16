@@ -1,14 +1,11 @@
 pub mod pest_parser;
 
-use alloc::boxed::Box;
-use alloc::string::ToString;
-use alloc::vec::Vec;
 use core::fmt::Display;
 
-use crate::regraph::{
-    common::{Atom, Name, Set, TableName, TypeName},
+use quine_core::{
+    common::{Atom, Set},
     rule::Op,
-    types::{BaseType, TableDef, Type, TypeConstructor, TypeDef},
+    types::{TableDef, TypeDef},
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -25,12 +22,12 @@ impl Span {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Command {
-    TypeDef(TypeName, TypeDef),
-    TableDef(TableName, TableDef),
+    TypeDef(String, TypeDef),
+    TableDef(String, TableDef),
     Rule(Rule),
     Fact(Bodys),
     // repl only
-    Query(Heads, Vec<VarName>),
+    Query(Heads, Vec<String>),
     Run,
 }
 
@@ -44,77 +41,30 @@ pub type Heads = Box<[Head]>;
 pub type Bodys = Box<[Body]>;
 
 pub trait VarExtractor {
-    fn extract_vars(&self) -> Set<VarName>;
+    fn extract_vars(&self) -> Set<String>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Head {
     Match(Span, ConstructorPattern),
     LetEq(Span, Pattern, Pattern),
-    Guard(Span, Op, VarName, AtomOrVariable),
+    Guard(Span, Op, String, AtomOrVariable),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Pattern {
     Wildcard(Span),
     Atom(Span, Atom),
-    Variable(Span, VarName),
+    Variable(Span, String),
     Constructor(Span, ConstructorPattern),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConstructorPattern {
-    pub name: Name,
+    pub name: String,
     pub args: Box<[Pattern]>,
     pub span: Span,
 }
-
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-// pub enum Op {
-//     Equ,
-//     Neq,
-//     Lt,
-//     Gt,
-//     Leq,
-//     Geq,
-// }
-
-// impl Op {
-//     pub fn to_constraint_op(&self, is_sign: bool) -> rule::Op {
-//         match self {
-//             Op::Equ => rule::Op::Equ,
-//             Op::Neq => rule::Op::Neq,
-//             Op::Lt => {
-//                 if is_sign {
-//                     rule::Op::Lt
-//                 } else {
-//                     rule::Op::Ltu
-//                 }
-//             }
-//             Op::Gt => {
-//                 if is_sign {
-//                     rule::Op::Gt
-//                 } else {
-//                     rule::Op::Gtu
-//                 }
-//             }
-//             Op::Leq => {
-//                 if is_sign {
-//                     rule::Op::Leq
-//                 } else {
-//                     rule::Op::Lequ
-//                 }
-//             }
-//             Op::Geq => {
-//                 if is_sign {
-//                     rule::Op::Geq
-//                 } else {
-//                     rule::Op::Gequ
-//                 }
-//             }
-//         }
-//     }
-// }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
@@ -123,7 +73,7 @@ pub enum Expr {
 }
 
 impl VarExtractor for Expr {
-    fn extract_vars(&self) -> Set<VarName> {
+    fn extract_vars(&self) -> Set<String> {
         match self {
             Expr::AtomOrVariable(e) => e.extract_vars(),
             Expr::FunctionCall(call) => call.extract_vars(),
@@ -132,10 +82,10 @@ impl VarExtractor for Expr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FunctionCall(pub Function, pub Box<[Expr]>);
+pub struct FunctionCall(pub String, pub Box<[Expr]>);
 
 impl VarExtractor for FunctionCall {
-    fn extract_vars(&self) -> Set<VarName> {
+    fn extract_vars(&self) -> Set<String> {
         self.1.iter().fold(Set::default(), |acc, arg| {
             acc.union(&arg.extract_vars()).cloned().collect()
         })
@@ -145,11 +95,11 @@ impl VarExtractor for FunctionCall {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AtomOrVariable {
     Atom(Atom),
-    Variable(VarName),
+    Variable(String),
 }
 
 impl VarExtractor for AtomOrVariable {
-    fn extract_vars(&self) -> Set<VarName> {
+    fn extract_vars(&self) -> Set<String> {
         match self {
             AtomOrVariable::Atom(_) => Set::default(),
             AtomOrVariable::Variable(v) => Set::from_iter([v.clone()]),
@@ -159,13 +109,10 @@ impl VarExtractor for AtomOrVariable {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Body {
-    Let(Span, VarName, FunctionCall),
+    Let(Span, String, FunctionCall),
     Insert(Span, FunctionCall, Option<Expr>),
     Union(Span, Expr, Expr),
 }
-
-pub type Function = Name;
-pub type VarName = Name;
 
 impl Display for AtomOrVariable {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -288,21 +235,6 @@ impl Display for Pattern {
     }
 }
 
-impl Display for Op {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let display = match self {
-            Op::Equ => "=",
-            Op::Neq => "!=",
-            Op::Lt => "<",
-            Op::Gt => ">",
-            Op::Leq => "<=",
-            Op::Geq => ">=",
-        };
-
-        write!(f, "{}", display)
-    }
-}
-
 impl Display for Head {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -319,73 +251,6 @@ impl Display for Head {
                 Ok(())
             }
         }
-    }
-}
-
-impl Display for BaseType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let s = match self {
-            BaseType::Id => "ID",
-            BaseType::I1 => "i1",
-            BaseType::I8 => "i8",
-            BaseType::U8 => "u8",
-            BaseType::I16 => "i16",
-            BaseType::U16 => "u16",
-            BaseType::I32 => "i32",
-            BaseType::U32 => "u32",
-            BaseType::F32 => "f32",
-            BaseType::I64 => "i64",
-            BaseType::U64 => "u64",
-            BaseType::F64 => "f64",
-            BaseType::Str => "str",
-        };
-
-        write!(f, "{s}")
-    }
-}
-
-impl Display for Type {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Type::Base(bt) => write!(f, "{bt:?}"),
-            Type::Name(name) => write!(f, "{name}"),
-        }
-    }
-}
-
-impl Display for TypeConstructor {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}(", self.0)?;
-        for (idx, t) in self.1.iter().enumerate() {
-            if idx != 0 {
-                write!(f, ", ")?;
-            }
-
-            write!(f, "{t}")?;
-        }
-
-        write!(f, ")")
-    }
-}
-
-impl Display for TypeDef {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "type {}", self.0)?;
-        for con in &self.1.0 {
-            writeln!(f, "| {con}")?;
-        }
-
-        Ok(())
-    }
-}
-
-impl Display for TableDef {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "table {}",
-            TypeConstructor(self.0.clone(), self.1.clone())
-        )
     }
 }
 

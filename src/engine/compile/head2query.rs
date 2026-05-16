@@ -1,6 +1,3 @@
-use alloc::format;
-use alloc::vec::Vec;
-
 use crate::{
     engine::{
         compile::atom_to_value,
@@ -8,13 +5,10 @@ use crate::{
         error::CompileError,
         interner::Interner,
     },
-    regraph::{
-        common::{ColumnIndex, ConstructorName, Map, Set, Value, VarId},
-        rule::{Constraint, CrossConstraint, Op, Query, ScanStep, VariableRecord},
-        types::{BaseType, Type},
-    },
     syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
 };
+
+use quine_core::{common::*, rule::*, types::*};
 
 struct QueryCtx<'a> {
     table_env: &'a TableEnv,
@@ -287,16 +281,15 @@ fn check_and_compile_pattern(
                     Type::Name(constructor_pattern.name.clone()),
                 ));
             };
-            let cons_name =
-                ConstructorName(format!("{}.{}", expected_name, constructor_pattern.name));
+            let cons_name = format!("{}.{}", expected_name, constructor_pattern.name);
             let cons_type = ctx
                 .data_types
                 .get_constructor_type(&cons_name)
                 .ok_or_else(|| CompileError::InvalidTableName(constructor_pattern.name.clone()))?;
-            if cons_type.0 != *expected_name {
+            if cons_type != *expected_name {
                 return Err(CompileError::TypeCheckError(
                     Type::Name(expected_name.clone()),
-                    Type::Name(cons_type.0.clone()),
+                    Type::Name(cons_type.clone()),
                 ));
             }
             let res = check_and_compile_con_pattern(ctx, constructor_pattern, true)?;

@@ -1,14 +1,7 @@
-use alloc::boxed::Box;
-use alloc::format;
-use alloc::string::String;
-use alloc::vec::Vec;
-
 use pest::Parser;
 use pest_derive::Parser;
+use quine_core::{common::Atom, rule::Op, types::*};
 
-use crate::regraph::common::{Atom, Name, TypeName};
-use crate::regraph::rule::Op;
-use crate::regraph::types::{BaseType, SumType, TableDef, Type, TypeConstructor, TypeDef};
 use crate::syntax::{
     AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
     Rule as SyntaxRule, Span,
@@ -18,7 +11,7 @@ use crate::syntax::{
 #[grammar = "../docs/grammar.pest"]
 pub struct QuineParser;
 
-fn to_name(s: &str) -> Name {
+fn to_name(s: &str) -> String {
     String::from(s)
 }
 
@@ -26,7 +19,7 @@ fn to_span(s: pest::Span) -> Span {
     Span::new(s.start(), s.end())
 }
 
-fn parse_variable(pair: pest::iterators::Pair<Rule>) -> Name {
+fn parse_variable(pair: pest::iterators::Pair<Rule>) -> String {
     to_name(pair.as_str())
 }
 
@@ -219,7 +212,7 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             let name = parse_variable(parts.next().unwrap());
             let constructors: Box<[TypeConstructor]> = parts.map(parse_type_constructor).collect();
             let type_def = TypeDef(name.clone(), SumType(constructors));
-            Command::TypeDef(TypeName(name), type_def)
+            Command::TypeDef(name, type_def)
         }
         Rule::relation_def => {
             let mut parts = inner.into_inner();

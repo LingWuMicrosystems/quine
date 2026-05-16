@@ -1,9 +1,9 @@
 pub mod body2action;
 pub mod head2query;
 
-use alloc::format;
-use alloc::vec;
-use alloc::vec::Vec;
+use quine_core::rule::VariableRecord;
+use quine_core::types::*;
+use quine_core::{common::*, rule};
 
 use crate::engine::EngineContext;
 use crate::engine::command::BackendCommand;
@@ -11,12 +11,6 @@ use crate::engine::compile::body2action::{CompileCtx, bodys2action};
 use crate::engine::compile::head2query::heads2query;
 use crate::engine::error::CompileError;
 use crate::engine::interner::Interner;
-use crate::regraph::common::TypeName;
-use crate::regraph::common::{Atom, Value};
-use crate::regraph::rule;
-use crate::regraph::rule::VariableRecord;
-use crate::regraph::types::BaseType;
-use crate::regraph::types::{TableDef, Type};
 use crate::syntax::{self, Command};
 
 pub fn atom_to_value(atom: &Atom, interner: &mut Interner) -> Value {
@@ -35,7 +29,7 @@ impl EngineContext {
             Command::TypeDef(name, type_def) => {
                 let mut r = vec![];
                 for cons in &type_def.1.0 {
-                    let table_name = format!("{}.{}", name.0, cons.0);
+                    let table_name = format!("{}.{}", name, cons.0);
                     let mut cols: Vec<Type> = cons.1.to_vec();
                     cols.push(Type::Base(BaseType::Id));
                     let table_def = TableDef(table_name.clone(), cols.into());
@@ -80,13 +74,8 @@ impl EngineContext {
 
     fn check_type_defined(&self, ty: &Type) -> Result<(), CompileError> {
         match ty {
-            Type::Name(name)
-                if !self
-                    .data_types
-                    .name2type_map
-                    .contains_key(&TypeName(name.clone())) =>
-            {
-                Err(CompileError::UnknownTypeName(TypeName(name.clone())))
+            Type::Name(name) if !self.data_types.name2type_map.contains_key(name) => {
+                Err(CompileError::UnknownTypeName(name.clone()))
             }
             _ => Ok(()),
         }

@@ -6,29 +6,23 @@ pub mod interner;
 pub mod prelude;
 pub mod term;
 
-use alloc::borrow::ToOwned;
-use alloc::boxed::Box;
-use alloc::format;
-use alloc::vec::Vec;
-
+use quine_core::common::{Atom, Map, Set, Value};
+use quine_core::related_egraph::{NativeFn, RelatedEGraph};
+use quine_core::rule::VariableRecord;
+use quine_core::table::Row;
+use quine_core::types::*;
 use smallvec::smallvec;
 
 use crate::engine::env::TableEnv;
 use crate::engine::interner::Interner;
 use crate::engine::term::Term;
-use crate::regraph::common::{Atom, Map, Name, Set, TypeName, Value};
-use crate::regraph::related_egraph::NativeFn;
-use crate::regraph::types::{BaseType, SumType, TableDef, Type, TypeDef};
 
 #[derive(Debug, Clone)]
 pub struct NativeSignature {
     pub args: Box<[BaseType]>,
     pub ret: BaseType,
 }
-use crate::{
-    engine::{command::BackendCommand, env::CompileEnv},
-    regraph::{related_egraph::RelatedEGraph, rule::VariableRecord, table::Row},
-};
+use crate::engine::{command::BackendCommand, env::CompileEnv};
 
 #[derive(Debug, Clone)]
 pub struct EngineContext {
@@ -36,15 +30,15 @@ pub struct EngineContext {
     pub table_types: TableEnv,
     pub interner: Interner,
     pub regraph: RelatedEGraph,
-    pub native_names: Map<Name, usize>,
-    pub native_signatures: Map<Name, NativeSignature>,
+    pub native_names: Map<String, usize>,
+    pub native_signatures: Map<String, NativeSignature>,
 }
 
 impl Default for EngineContext {
     fn default() -> Self {
         let unit_type = TypeDef("Unit".to_owned(), SumType(Box::new([])));
         let mut data_types = CompileEnv::default();
-        let _ = data_types.insert(TypeName("Unit".to_owned()), unit_type.clone());
+        let _ = data_types.insert("Unit".to_owned(), unit_type.clone());
 
         let unit_table = TableDef("Unit".to_owned(), Box::new([Type::Base(BaseType::Id)]));
         let mut table_types = TableEnv::default();

@@ -1,3 +1,6 @@
+#![no_std]
+extern crate alloc;
+
 pub mod common;
 pub mod related_egraph;
 pub mod rule;

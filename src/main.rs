@@ -3,12 +3,14 @@ use std::{borrow::Cow, fs, path::PathBuf};
 
 use quine::{
     engine::EngineContext,
-    regraph::{common::Set, rule::VariableRecord, table::Row},
     syntax::Command,
     syntax::pest_parser::{parse_file, parse_repl_commands},
 };
 
 use directories::ProjectDirs;
+use quine_core::common::Set;
+use quine_core::rule::VariableRecord;
+use quine_core::table::Row;
 use reedline::{
     FileBackedHistory, Prompt, PromptEditMode, PromptHistorySearch, Reedline, Signal,
     ValidationResult, Validator,

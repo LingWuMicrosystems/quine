@@ -1,13 +1,11 @@
-use alloc::string::ToString;
-use alloc::vec::Vec;
 use core::fmt::Display;
 
-use crate::regraph::common::{Atom, TableName};
+use quine_core::common::Atom;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     Literal(Atom),
-    App(TableName, Vec<Term>),
+    App(String, Vec<Term>),
     Cyclic,
 }
 
