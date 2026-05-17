@@ -238,11 +238,7 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             let bodys = parse_bodies(parts.next().unwrap());
             Command::Rule(SyntaxRule { heads, bodys })
         }
-        Rule::load => {
-            let mut parts = inner.into_inner();
-            let path = parse_string_content(parts.next().unwrap());
-            Command::Load(path)
-        }
+        Rule::load => Command::Load(parse_string_content(inner.into_inner().next().unwrap())),
         _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),
     }
 }
