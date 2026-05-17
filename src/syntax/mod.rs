@@ -25,10 +25,16 @@ pub enum Command {
     TypeDef(String, TypeDef),
     TableDef(String, TableDef),
     Rule(Rule),
+    Load(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ReplCommand {
+    Cmd(Command),
     Fact(Bodys),
-    // repl only
     Query(Heads, Vec<String>),
     Run,
+    Extract(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -258,6 +264,7 @@ impl Display for Command {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Command::TypeDef(_, def) => write!(f, "{def}"),
+            Command::TableDef(_, def) => write!(f, "{def}"),
             Command::Rule(Rule { heads, bodys }) => {
                 write!(f, "rule ")?;
                 for (idx, head) in heads.iter().enumerate() {
@@ -275,7 +282,16 @@ impl Display for Command {
                 }
                 write!(f, " }}")
             }
-            Command::Fact(fact) => {
+            Command::Load(path) => write!(f, "load \"{path}\""),
+        }
+    }
+}
+
+impl Display for ReplCommand {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ReplCommand::Cmd(cmd) => write!(f, "{cmd}"),
+            ReplCommand::Fact(fact) => {
                 write!(
                     f,
                     "fact {}",
@@ -285,8 +301,7 @@ impl Display for Command {
                         .join(" ")
                 )
             }
-            Command::TableDef(_, def) => write!(f, "{def}"),
-            Command::Query(heads, vars) => {
+            ReplCommand::Query(heads, vars) => {
                 write!(f, "query ")?;
                 for (idx, head) in heads.iter().enumerate() {
                     if idx != 0 {
@@ -303,7 +318,8 @@ impl Display for Command {
                 }
                 write!(f, ")")
             }
-            Command::Run => write!(f, "run"),
+            ReplCommand::Run => write!(f, "run"),
+            ReplCommand::Extract(name) => write!(f, "extract {name}"),
         }
     }
 }

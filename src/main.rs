@@ -3,7 +3,9 @@ use std::{borrow::Cow, fs, path::PathBuf};
 
 use quine::{
     engine::EngineContext,
-    syntax::Command,
+    engine::compile::Compiler,
+    engine::compile::head2query::heads2query,
+    syntax::{Command, ReplCommand},
     syntax::pest_parser::{parse_file, parse_repl_commands},
 };
 
@@ -15,6 +17,8 @@ use reedline::{
     FileBackedHistory, Prompt, PromptEditMode, PromptHistorySearch, Reedline, Signal,
     ValidationResult, Validator,
 };
+
+// ── prompt ──────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 struct QuinePrompt;
@@ -51,65 +55,202 @@ fn get_history_path() -> PathBuf {
     }
 }
 
+// ── main ────────────────────────────────────────────────────────────
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut ctx = EngineContext::default();
-    let mut i = 1;
-    let mut has_file = false;
+
+    let mut module_paths: Vec<PathBuf> = Vec::new();
+    let mut script_path: Option<PathBuf> = None;
     let mut force_repl = false;
 
+    let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "-m" => {
+                i += 1;
+                if let Some(path) = args.get(i) {
+                    module_paths.push(PathBuf::from(path));
+                }
+            }
             "-e" | "--eval" => {
                 i += 1;
                 if let Some(source) = args.get(i) {
-                    match execute_source(&mut ctx, source) {
-                        Ok(()) => {}
-                        Err(e) => eprintln!("error: {e}"),
+                    load_modules(&mut ctx, &module_paths);
+                    if let Err(e) = eval_source(&mut ctx, source) {
+                        eprintln!("error: {e}");
+                    }
+                    if !force_repl {
+                        return;
                     }
                 }
             }
             "--repl" => {
                 force_repl = true;
             }
-            file => {
-                has_file = true;
-                match run_file(&mut ctx, file) {
-                    Ok(()) => {}
-                    Err(e) => eprintln!("error: {e}"),
-                }
+            positional => {
+                script_path = Some(PathBuf::from(positional));
             }
         }
         i += 1;
     }
 
-    let enter_repl = !has_file || force_repl;
+    load_modules(&mut ctx, &module_paths);
 
-    if enter_repl {
-        run_repl(&mut ctx);
+    if let Some(script) = script_path {
+        if let Err(e) = run_script(&mut ctx, &script) {
+            eprintln!("error: {e}");
+        }
+        if !force_repl {
+            return;
+        }
+    }
+
+    run_repl(&mut ctx);
+}
+
+// ── module loading ──────────────────────────────────────────────────
+
+fn load_modules(ctx: &mut EngineContext, paths: &[PathBuf]) {
+    for path in paths {
+        if let Err(e) = load_module(ctx, path) {
+            eprintln!("error: {e}");
+        }
     }
 }
 
-fn execute_source(ctx: &mut EngineContext, source: &str) -> Result<(), String> {
-    let cmds = parse_file(source)?;
-    execute_commands(ctx, cmds)
+fn load_module(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
+    if path.is_dir() {
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_ql_files(path, &mut files);
+        files.sort();
+        for file in &files {
+            run_file(ctx, file)?;
+        }
+    } else {
+        run_file(ctx, path)?;
+    }
+    Ok(())
 }
 
-fn run_file(ctx: &mut EngineContext, path: &str) -> Result<(), String> {
+fn collect_ql_files(dir: &PathBuf, out: &mut Vec<PathBuf>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_ql_files(&path, out);
+            } else if path.extension().map_or(false, |e| e == "ql") {
+                out.push(path);
+            }
+        }
+    }
+}
+
+fn run_file(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
     let content = fs::read_to_string(path).map_err(|e| format!("{e}"))?;
     let cmds = parse_file(&content)?;
-    execute_commands(ctx, cmds)
+    execute_file_commands(ctx, cmds)
 }
+
+// ── script / eval ───────────────────────────────────────────────────
+
+fn run_script(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
+    let content = fs::read_to_string(path).map_err(|e| format!("{e}"))?;
+    execute_repl_source(ctx, &content)
+}
+
+fn eval_source(ctx: &mut EngineContext, source: &str) -> Result<(), String> {
+    execute_repl_source(ctx, source)
+}
+
+fn execute_repl_source(ctx: &mut EngineContext, source: &str) -> Result<(), String> {
+    let cmds = parse_repl_commands(source)?;
+    execute_repl_commands(ctx, cmds)
+}
+
+// ── command execution ───────────────────────────────────────────────
+
+fn execute_file_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<(), String> {
+    for cmd in cmds {
+        execute_file_command(ctx, cmd)?;
+    }
+    Ok(())
+}
+
+fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), String> {
+    if let Command::Load(path) = &cmd {
+        return load_module(ctx, &PathBuf::from(path));
+    }
+    let unit = Compiler::compile_command(
+        &cmd,
+        &mut ctx.data_types,
+        &mut ctx.table_types,
+        &mut ctx.interner,
+        &ctx.native_names,
+        &ctx.native_signatures,
+    )
+    .map_err(|e| format!("{:?}", e))?;
+    ctx.apply(unit);
+    Ok(())
+}
+
+fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<ReplCommand>) -> Result<(), String> {
+    for cmd in cmds {
+        match cmd {
+            ReplCommand::Cmd(cmd) => execute_file_command(ctx, cmd)?,
+            ReplCommand::Fact(fact) => {
+                let unit = Compiler::compile_fact(
+                    &fact,
+                    &ctx.table_types,
+                    &mut ctx.interner,
+                    &ctx.native_names,
+                    &ctx.native_signatures,
+                )
+                .map_err(|e| format!("{:?}", e))?;
+                ctx.apply(unit);
+            }
+            ReplCommand::Query(heads, vars) => {
+                let query = heads2query(
+                    &heads,
+                    &ctx.table_types,
+                    &ctx.data_types,
+                    &mut ctx.interner,
+                )
+                .map_err(|e| format!("{:?}", e))?;
+                let (var_record, rows) = ctx.run_query(&query, &vars);
+                print_query_result(&var_record, rows, ctx);
+            }
+            ReplCommand::Run => {
+                ctx.run();
+            }
+            ReplCommand::Extract(name) => {
+                eprintln!("extract: not yet implemented for '{name}'");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_query_result(var_record: &VariableRecord, rows: Set<Row>, ctx: &EngineContext) {
+    for row in rows {
+        for (name, offset) in &var_record.names_map {
+            let ty = var_record.get_type(*offset).unwrap();
+            let value = row.0.get(*offset).unwrap();
+            let term = ctx.extract(*value, ty);
+            print!("{name}: {term}");
+        }
+        println!();
+    }
+}
+
+// ── REPL ────────────────────────────────────────────────────────────
 
 struct QuineValidator;
 impl Validator for QuineValidator {
     fn validate(&self, line: &str) -> ValidationResult {
         let trimmed = line.trim_start();
-        if trimmed.is_empty()
-            || trimmed == "exit"
-            || trimmed == "quit"
-            || trimmed.starts_with("load \"")
-        {
+        if trimmed.is_empty() || trimmed == "exit" || trimmed == "quit" {
             return ValidationResult::Complete;
         }
         match parse_repl_commands(line) {
@@ -139,59 +280,16 @@ fn run_repl(ctx: &mut EngineContext) {
                     continue;
                 }
 
-                // REPL meta-commands
-                match input {
-                    "exit" | "quit" => break,
-                    cmd if cmd.starts_with("load \"") => {
-                        let path = &cmd[6..cmd.len() - 1];
-                        match run_file(ctx, path) {
-                            Ok(()) => {}
-                            Err(e) => eprintln!("error: {e}"),
-                        }
-                        continue;
-                    }
-                    _ => {}
+                if input == "exit" || input == "quit" {
+                    break;
                 }
 
-                let cmds = parse_repl_commands(input);
-                let Ok(cmds) = cmds else {
-                    eprintln!("error: {:?}", cmds.unwrap_err());
-                    continue;
-                };
-                if let Err(e) = execute_commands(ctx, cmds) {
-                    eprintln!("error: {e:?}");
+                if let Err(e) = execute_repl_source(ctx, input) {
+                    eprintln!("error: {e}");
                 }
             }
             Signal::CtrlC | Signal::CtrlD => break,
             _ => {}
         }
-    }
-}
-
-fn execute_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<(), String> {
-    let cmds: Result<Vec<_>, _> = cmds
-        .into_iter()
-        .map(|cmd| ctx.check_and_compile_command(cmd))
-        .collect();
-    let Ok(cmds) = cmds else {
-        return Err(format!("{:?}", cmds.unwrap_err()));
-    };
-    for cmd in cmds {
-        if let Some((var_record, rows)) = ctx.run_command(cmd) {
-            print_query_result(&var_record, rows, ctx);
-        }
-    }
-    Ok(())
-}
-
-fn print_query_result(var_record: &VariableRecord, rows: Set<Row>, ctx: &EngineContext) {
-    for row in rows {
-        for (name, offset) in &var_record.names_map {
-            let ty = var_record.get_type(*offset).unwrap();
-            let value = row.0.get(*offset).unwrap();
-            let term = ctx.extract(*value, ty);
-            print!("{name}: {term}");
-        }
-        println!();
     }
 }

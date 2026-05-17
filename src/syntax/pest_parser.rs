@@ -4,7 +4,7 @@ use quine_core::{rule::Op, types::*};
 
 use crate::syntax::{
     Atom, AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
-    Rule as SyntaxRule, Span,
+    ReplCommand, Rule as SyntaxRule, Span,
 };
 
 #[derive(Parser)]
@@ -204,7 +204,7 @@ fn parse_type_constructor(pair: pest::iterators::Pair<Rule>) -> TypeConstructor 
 }
 
 fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
-    debug_assert!(matches!(pair.as_rule(), Rule::command | Rule::repl_command));
+    debug_assert!(matches!(pair.as_rule(), Rule::command));
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
         Rule::type_def => {
@@ -238,18 +238,46 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             let bodys = parse_bodies(parts.next().unwrap());
             Command::Rule(SyntaxRule { heads, bodys })
         }
+        Rule::load => {
+            let mut parts = inner.into_inner();
+            let _load_kw = parts.next().unwrap();
+            let path = parse_string_content(parts.next().unwrap());
+            Command::Load(path)
+        }
+        _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),
+    }
+}
+
+fn parse_string_content(pair: pest::iterators::Pair<Rule>) -> String {
+    let s = pair.as_str();
+    if s.len() >= 2 {
+        s[1..s.len() - 1].to_string()
+    } else {
+        String::new()
+    }
+}
+
+fn parse_repl_command(pair: pest::iterators::Pair<Rule>) -> ReplCommand {
+    debug_assert!(matches!(pair.as_rule(), Rule::repl_command));
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::command => ReplCommand::Cmd(parse_command(inner)),
         Rule::fact => {
             let bodie = parse_bodies(inner.into_inner().next().unwrap());
-            Command::Fact(bodie)
+            ReplCommand::Fact(bodie)
         }
         Rule::query => {
             let mut parts = inner.into_inner();
             let heads = parse_heads(parts.next().unwrap());
             let vars: Vec<_> = parts.map(|p| parse_variable(p)).collect();
-            Command::Query(heads, vars)
+            ReplCommand::Query(heads, vars)
         }
-        Rule::run => Command::Run,
-        _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),
+        Rule::run => ReplCommand::Run,
+        Rule::extract => {
+            let name = parse_variable(inner.into_inner().next().unwrap());
+            ReplCommand::Extract(name)
+        }
+        _ => unreachable!("unexpected repl command variant: {:?}", inner.as_rule()),
     }
 }
 
@@ -273,7 +301,7 @@ pub fn parse_file(input: &str) -> Result<Vec<Command>, String> {
     Ok(commands)
 }
 
-pub fn parse_repl_commands(input: &str) -> Result<Vec<Command>, String> {
+pub fn parse_repl_commands(input: &str) -> Result<Vec<ReplCommand>, String> {
     let mut commands = Vec::new();
     let mut pos = 0;
 
@@ -288,7 +316,7 @@ pub fn parse_repl_commands(input: &str) -> Result<Vec<Command>, String> {
 
         for pair in pairs {
             let end = pair.as_span().end();
-            commands.push(parse_command(pair));
+            commands.push(parse_repl_command(pair));
             pos += end;
         }
     }
