@@ -240,7 +240,6 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
         }
         Rule::load => {
             let mut parts = inner.into_inner();
-            let _load_kw = parts.next().unwrap();
             let path = parse_string_content(parts.next().unwrap());
             Command::Load(path)
         }
