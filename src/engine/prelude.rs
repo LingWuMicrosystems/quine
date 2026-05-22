@@ -1,5 +1,6 @@
+use quine_core::{common::Value, related_egraph::NativeFn, types::BaseType};
+
 use crate::engine::EngineContext;
-use crate::regraph::{common::Value, related_egraph::NativeFn, types::BaseType};
 
 fn add(args: &[Value]) -> Value {
     Value(args[0].0.wrapping_add(args[1].0))
@@ -52,13 +53,13 @@ pub fn register_prelude(ctx: &mut EngineContext) {
     ctx.register_native("sub", i32_2, BaseType::I32, sub as NativeFn);
     ctx.register_native("mul", i32_2, BaseType::I32, mul as NativeFn);
     ctx.register_native("div", i32_2, BaseType::I32, div as NativeFn);
-    ctx.register_native("eq",  i32_2, BaseType::I1, eq as NativeFn);
+    ctx.register_native("eq", i32_2, BaseType::I1, eq as NativeFn);
     ctx.register_native("neq", i32_2, BaseType::I1, neq as NativeFn);
-    ctx.register_native("lt",  i32_2, BaseType::I1, lt as NativeFn);
-    ctx.register_native("gt",  i32_2, BaseType::I1, gt as NativeFn);
+    ctx.register_native("lt", i32_2, BaseType::I1, lt as NativeFn);
+    ctx.register_native("gt", i32_2, BaseType::I1, gt as NativeFn);
     ctx.register_native("leq", i32_2, BaseType::I1, leq as NativeFn);
     ctx.register_native("geq", i32_2, BaseType::I1, geq as NativeFn);
     ctx.register_native("not", bool_1, BaseType::I1, not as NativeFn);
     ctx.register_native("and", bool_2, BaseType::I1, and as NativeFn);
-    ctx.register_native("or",  bool_2, BaseType::I1, or as NativeFn);
+    ctx.register_native("or", bool_2, BaseType::I1, or as NativeFn);
 }

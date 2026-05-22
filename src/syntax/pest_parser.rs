@@ -1,16 +1,9 @@
-use alloc::boxed::Box;
-use alloc::format;
-use alloc::string::String;
-use alloc::vec::Vec;
-
 use pest::Parser;
 use pest_derive::Parser;
+use quine_core::{rule::Op, types::*};
 
-use crate::regraph::common::{Atom, Name, TypeName};
-use crate::regraph::rule::Op;
-use crate::regraph::types::{BaseType, SumType, TableDef, Type, TypeConstructor, TypeDef};
 use crate::syntax::{
-    AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
+    Atom, AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
     Rule as SyntaxRule, Span,
 };
 
@@ -18,7 +11,7 @@ use crate::syntax::{
 #[grammar = "../docs/grammar.pest"]
 pub struct QuineParser;
 
-fn to_name(s: &str) -> Name {
+fn to_name(s: &str) -> String {
     String::from(s)
 }
 
@@ -26,7 +19,7 @@ fn to_span(s: pest::Span) -> Span {
     Span::new(s.start(), s.end())
 }
 
-fn parse_variable(pair: pest::iterators::Pair<Rule>) -> Name {
+fn parse_variable(pair: pest::iterators::Pair<Rule>) -> String {
     to_name(pair.as_str())
 }
 
@@ -211,6 +204,7 @@ fn parse_type_constructor(pair: pest::iterators::Pair<Rule>) -> TypeConstructor 
 }
 
 fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
+    debug_assert!(matches!(pair.as_rule(), Rule::command));
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
         Rule::type_def => {
@@ -218,7 +212,7 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             let name = parse_variable(parts.next().unwrap());
             let constructors: Box<[TypeConstructor]> = parts.map(parse_type_constructor).collect();
             let type_def = TypeDef(name.clone(), SumType(constructors));
-            Command::TypeDef(TypeName(name), type_def)
+            Command::TypeDef(name, type_def)
         }
         Rule::relation_def => {
             let mut parts = inner.into_inner();
@@ -245,8 +239,8 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             Command::Rule(SyntaxRule { heads, bodys })
         }
         Rule::fact => {
-            let bodie = parse_bodies(inner.into_inner().next().unwrap());
-            Command::Fact(bodie)
+            let bodys = parse_bodies(inner.into_inner().next().unwrap());
+            Command::Fact(bodys)
         }
         Rule::query => {
             let mut parts = inner.into_inner();
@@ -260,12 +254,26 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
 }
 
 pub fn parse_file(input: &str) -> Result<Vec<Command>, String> {
-    let pairs = QuineParser::parse(Rule::TOP_LEVEL, input).map_err(|e| format!("{}", e))?;
-    let commands = pairs.into_iter().map(parse_command).collect();
+    let pairs: Vec<_> = QuineParser::parse(Rule::TOP_LEVEL, input)
+        .map_err(|e| format!("{}", e))?
+        .collect();
+
+    let consumed = pairs.last().map_or(0, |p| p.as_span().end());
+    let remaining = input[consumed..].trim();
+    if !remaining.is_empty() {
+        return Err(format!(
+            "unexpected input at position {consumed}: {remaining}"
+        ));
+    }
+
+    let commands = pairs
+        .into_iter()
+        .flat_map(|pair| pair.into_inner().map(parse_command))
+        .collect();
     Ok(commands)
 }
 
-pub fn parse_commands(input: &str) -> Result<Vec<Command>, String> {
+pub fn parse_repl_commands(input: &str) -> Result<Vec<Command>, String> {
     let mut commands = Vec::new();
     let mut pos = 0;
 
@@ -276,7 +284,7 @@ pub fn parse_commands(input: &str) -> Result<Vec<Command>, String> {
         }
 
         let pairs =
-            QuineParser::parse(Rule::repl_command, remaining).map_err(|e| format!("{}", e))?;
+            QuineParser::parse(Rule::command, remaining).map_err(|e| format!("{}", e))?;
 
         for pair in pairs {
             let end = pair.as_span().end();

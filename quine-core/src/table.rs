@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 
 use smallvec::SmallVec;
 
-use crate::regraph::{
+use crate::{
     common::{ColumnIndex, Map, RowIndex, Value},
     rule::{Constraint, Op},
     types::{BaseType, TableDef, Type},

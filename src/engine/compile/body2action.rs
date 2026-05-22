@@ -1,28 +1,26 @@
-use alloc::boxed::Box;
-use alloc::vec::Vec;
+use quine_core::{
+    common::*,
+    related_egraph::*,
+    rule::{self, *},
+    types::{BaseType, Type},
+};
 
 use crate::{
     engine::NativeSignature,
     engine::compile::atom_to_value,
     engine::error::CompileError,
     engine::interner::Interner,
-    regraph::common::{Map, Name, TableName, VarId},
-    regraph::types::{BaseType, Type},
-    regraph::{
-        related_egraph::TableId,
-        rule::{self, Action, ActionTail, ValueOrVariable, VariableRecord},
-    },
     syntax::{AtomOrVariable, Body, Expr, FunctionCall},
 };
 
 pub struct CompileCtx<'a> {
-    pub table_map: &'a Map<TableName, TableId>,
+    pub table_map: &'a Map<String, TableId>,
     pub head_variables: &'a VariableRecord,
     pub variables: VariableRecord,
     pub lets: Vec<rule::FunctionCall>,
     pub interner: &'a mut Interner,
-    pub native_names: &'a Map<Name, usize>,
-    pub native_signatures: &'a Map<Name, NativeSignature>,
+    pub native_names: &'a Map<String, usize>,
+    pub native_signatures: &'a Map<String, NativeSignature>,
 }
 
 pub fn bodys2action(ctx: &mut CompileCtx, bodys: &[Body]) -> Result<Action, CompileError> {
@@ -128,7 +126,10 @@ fn atom_or_variable_transform(
     a: &AtomOrVariable,
 ) -> Result<rule::ValueOrVariable, CompileError> {
     match a {
-        AtomOrVariable::Atom(a) => Ok(ValueOrVariable::Value(atom_to_value(a, ctx.interner))),
+        AtomOrVariable::Atom(a) => Ok(ValueOrVariable::Value(atom_to_value(
+            a.clone(),
+            ctx.interner,
+        ))),
         AtomOrVariable::Variable(v) => {
             if let Some(offset) = ctx.head_variables.get_offset(v) {
                 Ok(ValueOrVariable::Variable(VarId(offset)))

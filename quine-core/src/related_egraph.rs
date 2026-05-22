@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use smallvec::ToSmallVec;
 
-use crate::regraph::{
+use crate::{
     common::{ColumnIndex, Map, RowIndex, Set, Value, VarId},
     rule::{Action, ActionTail, FunctionCall, Op, Query, Rule},
     table::{Row, Table},

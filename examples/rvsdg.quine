@@ -1,0 +1,11 @@
+data StringList = Cons(str, StringList) | Nil
+data ExprList = Cons(Expr, ExprList) | Nil
+data RegionList = Cons(Region, RegionList) | Nil
+
+data Expr
+    = Var(Expr)
+    | Const(i64)
+    | Op(str, ExprList, RegionList)
+    | Proj(u32, Expr)
+
+data Region = Region(StringList, ExprList)

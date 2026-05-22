@@ -1,26 +1,21 @@
-use alloc::{borrow::ToOwned, boxed::Box, vec};
-use alloc::{format, vec::Vec};
-
-use crate::regraph::types::{BaseType, Type};
-use crate::{
-    engine::error::CompileError,
-    regraph::{
-        common::{ConstructorName, Map, TableName, TypeName},
-        types::{TableDef, TypeDef},
-    },
+use quine_core::{
+    common::Map,
+    types::{BaseType, TableDef, Type, TypeDef},
 };
+
+use crate::engine::error::CompileError;
 
 pub type CompileEnv = DataTypeEnv;
 
 #[derive(Debug, Clone)]
 pub struct TableEnv {
     pub tables: Vec<TableDef>,
-    pub name_map: Map<TableName, usize>,
+    pub name_map: Map<String, usize>,
 }
 
 impl Default for TableEnv {
     fn default() -> Self {
-        let mut name_map: Map<TableName, usize> = Default::default();
+        let mut name_map: Map<String, usize> = Default::default();
         let tables = vec![TableDef(
             "Unit".to_owned(),
             Box::new([Type::Base(BaseType::Id)]),
@@ -31,7 +26,7 @@ impl Default for TableEnv {
 }
 
 impl TableEnv {
-    pub fn insert(&mut self, name: TableName, def: TableDef) -> Result<(), CompileError> {
+    pub fn insert(&mut self, name: String, def: TableDef) -> Result<(), CompileError> {
         let offset = self.tables.len();
         if self.name_map.contains_key(&name) {
             return Err(CompileError::DuplicateTableName(name));
@@ -46,7 +41,7 @@ impl TableEnv {
         Ok(())
     }
 
-    pub fn get_offset(&self, name: &TableName) -> Option<usize> {
+    pub fn get_offset(&self, name: &String) -> Option<usize> {
         self.name_map.get(name).copied()
     }
 
@@ -54,7 +49,7 @@ impl TableEnv {
         self.tables.get(offset)
     }
 
-    pub fn get_from_name(&self, name: &TableName) -> Option<&TableDef> {
+    pub fn get_from_name(&self, name: &String) -> Option<&TableDef> {
         let offset = self.name_map.get(name)?;
         self.tables.get(*offset)
     }
@@ -63,14 +58,14 @@ impl TableEnv {
 #[derive(Debug, Default, Clone)]
 pub struct DataTypeEnv {
     pub type_list: Vec<TypeDef>,
-    pub name2type_map: Map<TypeName, usize>,
+    pub name2type_map: Map<String, usize>,
     // pub type2name_map: Map<TypeDef, usize>,
     // constructor name
-    pub cons2type_map: Map<ConstructorName, usize>,
+    pub cons2type_map: Map<String, usize>,
 }
 
 impl DataTypeEnv {
-    pub fn insert(&mut self, name: TypeName, type_def: TypeDef) -> Result<(), CompileError> {
+    pub fn insert(&mut self, name: String, type_def: TypeDef) -> Result<(), CompileError> {
         if self.name2type_map.contains_key(&name) {
             return Err(CompileError::DuplicateTypeName(name));
         }
@@ -78,18 +73,16 @@ impl DataTypeEnv {
         self.type_list.push(type_def.clone());
 
         for cons in type_def.1.0 {
-            self.cons2type_map.insert(
-                ConstructorName(format!("{}.{}", type_def.0, cons.0.clone())),
-                offset,
-            );
+            self.cons2type_map
+                .insert(format!("{}.{}", type_def.0, cons.0.clone()), offset);
         }
         self.name2type_map.insert(name, offset);
         // self.type2name_map.insert(type_def, offset);
         Ok(())
     }
 
-    pub fn get_constructor_type(&self, name: &ConstructorName) -> Option<TypeName> {
+    pub fn get_constructor_type(&self, name: &String) -> Option<String> {
         let &idx = self.cons2type_map.get(name)?;
-        Some(TypeName(self.type_list[idx].0.clone()))
+        Some(self.type_list[idx].0.clone())
     }
 }

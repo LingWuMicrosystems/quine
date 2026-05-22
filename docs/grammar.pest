@@ -1,23 +1,9 @@
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
-KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "==" | "=>" | "!=" | "<" | ">" | "<=" | ">=" }
+KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "run" | "=" | op }
 
 TOP_LEVEL = {
     command*
-}
-
-REPL_TOP_LEVEL = {
-    repl_command*
-}
-
-repl_command = {
-    type_def
-  | relation_def
-  | function_def
-  | rule
-  | fact
-  | run
-  | query
 }
 
 command = {
@@ -26,6 +12,7 @@ command = {
   | function_def
   | fact
   | rule
+  | query
   | run
 }
 

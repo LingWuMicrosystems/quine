@@ -1,24 +1,18 @@
-use alloc::boxed::Box;
+use quine_core::{common::ColumnIndex, types::Type};
 
-use crate::{
-    regraph::{
-        common::{Atom, ColumnIndex, TableName, TypeName},
-        types::Type,
-    },
-    syntax::VarName,
-};
+use crate::syntax::Atom;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CompileError {
-    DuplicateTableName(TableName),
-    DuplicateTypeName(TypeName),
-    UnknownTypeName(TypeName),
-    InvalidTableName(TableName),
-    InvalidTableColumn(TableName, ColumnIndex),
-    InvalidVariableName(VarName),
+    DuplicateTableName(String),
+    DuplicateTypeName(String),
+    UnknownTypeName(String),
+    InvalidTableName(String),
+    InvalidTableColumn(String, ColumnIndex),
+    InvalidVariableName(String),
     InvalidAtomType(Atom, Type),
-    VariableNotDefine(VarName),
-    VariableInvalidInFact(Box<[VarName]>),
+    VariableNotDefine(String),
+    VariableInvalidInFact(Box<[String]>),
     TypeCheckError(Type, Type),
     InvalidTableWidth(usize, usize),
     InvalidExpression,

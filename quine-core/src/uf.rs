@@ -2,7 +2,7 @@ use core::mem::swap;
 
 use alloc::vec::Vec;
 
-use crate::regraph::common::Value;
+use crate::common::Value;
 
 #[derive(Debug, Default, Clone)]
 pub struct UnionFind {

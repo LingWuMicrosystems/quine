@@ -3,16 +3,24 @@ name = "quine"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[workspace]
+members = [
+    "quine-core"
+]
+
+[workspace.dependencies]
 rustc-hash = "2.1.2"
 smallvec = "1.15.1"
-rayon = "1.12.0"
 
-nom = "8.0.0"
-nom_locate = "5.0.0"
+[dependencies]
+rustc-hash = { workspace = true }
+smallvec = { workspace = true }
+quine-core = { path="./quine-core" }
 
-pest = { version = "2.7", default-features = false }
-pest_derive = { version = "2.7", default-features = false }
+# rayon = "1.12.0"
+
+pest = { version = "2.7" }
+pest_derive = { version = "2.7" }
 
 reedline = "0.47.0"
 directories = "6.0.0"

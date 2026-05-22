@@ -1,4 +1,3 @@
-pub mod command;
 pub mod compile;
 pub mod env;
 pub mod error;
@@ -6,29 +5,30 @@ pub mod interner;
 pub mod prelude;
 pub mod term;
 
-use alloc::borrow::ToOwned;
-use alloc::boxed::Box;
-use alloc::format;
-use alloc::vec::Vec;
-
+use quine_core::common::{Map, Set, Value};
+use quine_core::related_egraph::{NativeFn, RelatedEGraph};
+use quine_core::rule::{self, Query, VariableRecord};
+use quine_core::table::Row;
+use quine_core::types::*;
 use smallvec::smallvec;
 
-use crate::engine::env::TableEnv;
+use crate::engine::env::{CompileEnv, TableEnv};
 use crate::engine::interner::Interner;
 use crate::engine::term::Term;
-use crate::regraph::common::{Atom, Map, Name, Set, TypeName, Value};
-use crate::regraph::related_egraph::NativeFn;
-use crate::regraph::types::{BaseType, SumType, TableDef, Type, TypeDef};
+use crate::syntax::Atom;
 
 #[derive(Debug, Clone)]
 pub struct NativeSignature {
     pub args: Box<[BaseType]>,
     pub ret: BaseType,
 }
-use crate::{
-    engine::{command::BackendCommand, env::CompileEnv},
-    regraph::{related_egraph::RelatedEGraph, rule::VariableRecord, table::Row},
-};
+
+#[derive(Debug, Default, Clone)]
+pub struct CompiledUnit {
+    pub table_defs: Vec<TableDef>,
+    pub rules: Vec<rule::Rule>,
+    pub actions: Vec<rule::Action>,
+}
 
 #[derive(Debug, Clone)]
 pub struct EngineContext {
@@ -36,15 +36,15 @@ pub struct EngineContext {
     pub table_types: TableEnv,
     pub interner: Interner,
     pub regraph: RelatedEGraph,
-    pub native_names: Map<Name, usize>,
-    pub native_signatures: Map<Name, NativeSignature>,
+    pub native_names: Map<String, usize>,
+    pub native_signatures: Map<String, NativeSignature>,
 }
 
 impl Default for EngineContext {
     fn default() -> Self {
         let unit_type = TypeDef("Unit".to_owned(), SumType(Box::new([])));
         let mut data_types = CompileEnv::default();
-        let _ = data_types.insert(TypeName("Unit".to_owned()), unit_type.clone());
+        let _ = data_types.insert("Unit".to_owned(), unit_type.clone());
 
         let unit_table = TableDef("Unit".to_owned(), Box::new([Type::Base(BaseType::Id)]));
         let mut table_types = TableEnv::default();
@@ -68,53 +68,48 @@ impl Default for EngineContext {
 }
 
 impl EngineContext {
-    pub fn run_command(
-        &mut self,
-        cmd: command::BackendCommand,
-    ) -> Option<(VariableRecord, Set<Row>)> {
-        match cmd {
-            BackendCommand::AddTables(table_defs) => {
-                for table_def in table_defs {
-                    self.regraph.add_table(table_def);
-                }
-                None
-            }
-            BackendCommand::AddRule(rule) => {
-                self.regraph.add_rule(rule);
-                None
-            }
-            BackendCommand::Action(action) => {
-                self.regraph
-                    .apply_action(&action, Set::from_iter([Row(smallvec![])]));
-                None
-            }
-            BackendCommand::Query(query, vars) => {
-                let mut result = self.regraph.run_query(&query);
-                if vars.is_empty() {
-                    return Some((query.variables.clone(), result));
-                }
-                let mut proj_record = VariableRecord::default();
-                for name in &vars {
-                    let offset = query.variables.get_offset(name).unwrap();
-                    let ty = query.variables.get_type(offset).unwrap();
-                    proj_record.insert_var(Some(name.clone()), ty.clone());
-                }
-                let offsets: Vec<_> = vars
-                    .iter()
-                    .map(|n| query.variables.get_offset(n).unwrap())
-                    .collect();
-                result = result
-                    .into_iter()
-                    .map(|row| Row(offsets.iter().map(|&o| *row.0.get(o).unwrap()).collect()))
-                    .collect();
-                Some((proj_record, result))
-            }
-            BackendCommand::Run => {
-                self.regraph.set_fully_dirty();
-                self.regraph.run();
-                None
-            }
+    pub fn apply(&mut self, unit: CompiledUnit) {
+        for table_def in unit.table_defs {
+            self.regraph.add_table(table_def);
         }
+        for rule in unit.rules {
+            self.regraph.add_rule(rule);
+        }
+        for action in unit.actions {
+            self.regraph
+                .apply_action(&action, Set::from_iter([Row(smallvec![])]));
+        }
+    }
+
+    pub fn run_query(
+        &mut self,
+        query: &Query,
+        vars: &[String],
+    ) -> (VariableRecord, Set<Row>) {
+        let mut result = self.regraph.run_query(query);
+        if vars.is_empty() {
+            return (query.variables.clone(), result);
+        }
+        let mut proj_record = VariableRecord::default();
+        for name in vars {
+            let offset = query.variables.get_offset(name).unwrap();
+            let ty = query.variables.get_type(offset).unwrap();
+            proj_record.insert_var(Some(name.clone()), ty.clone());
+        }
+        let offsets: Vec<_> = vars
+            .iter()
+            .map(|n| query.variables.get_offset(n).unwrap())
+            .collect();
+        result = result
+            .into_iter()
+            .map(|row| Row(offsets.iter().map(|&o| *row.0.get(o).unwrap()).collect()))
+            .collect();
+        (proj_record, result)
+    }
+
+    pub fn run(&mut self) {
+        self.regraph.set_fully_dirty();
+        self.regraph.run();
     }
 
     pub fn register_native(

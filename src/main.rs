@@ -3,10 +3,15 @@ use std::{borrow::Cow, fs, path::PathBuf};
 
 use quine::{
     engine::EngineContext,
-    regraph::{common::Set, rule::VariableRecord, table::Row},
+    engine::compile::Compiler,
+    engine::compile::head2query::heads2query,
     syntax::Command,
-    syntax::pest_parser::{parse_commands, parse_file},
+    syntax::pest_parser::{parse_file, parse_repl_commands},
 };
+
+use quine_core::common::Set;
+use quine_core::rule::VariableRecord;
+use quine_core::table::Row;
 
 use directories::ProjectDirs;
 use reedline::{
@@ -52,65 +57,121 @@ fn get_history_path() -> PathBuf {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut ctx = EngineContext::default();
-    let mut i = 1;
-    let mut has_file = false;
-    let mut force_repl = false;
 
-    while i < args.len() {
-        match args[i].as_str() {
-            "-e" | "--eval" => {
-                i += 1;
-                if let Some(source) = args.get(i) {
-                    match execute_source(&mut ctx, source) {
-                        Ok(()) => {}
-                        Err(e) => eprintln!("error: {e}"),
-                    }
-                }
-            }
-            "--repl" => {
-                force_repl = true;
-            }
-            file => {
-                has_file = true;
-                match run_file(&mut ctx, file) {
-                    Ok(()) => {}
-                    Err(e) => eprintln!("error: {e}"),
-                }
-            }
-        }
-        i += 1;
-    }
-
-    let enter_repl = !has_file || force_repl;
-
-    if enter_repl {
+    if args.len() == 1 {
         run_repl(&mut ctx);
+    } else if args.len() == 2 {
+        run_file(&mut ctx, &args[1].clone().into()).unwrap();
+    } else {
+        eprintln!("invalid params size")
     }
 }
 
-fn execute_source(ctx: &mut EngineContext, source: &str) -> Result<(), String> {
-    let cmds = parse_file(source)?;
-    execute_commands(ctx, cmds)
-}
-
-fn run_file(ctx: &mut EngineContext, path: &str) -> Result<(), String> {
+fn run_file(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
     let content = fs::read_to_string(path).map_err(|e| format!("{e}"))?;
     let cmds = parse_file(&content)?;
-    execute_commands(ctx, cmds)
+    execute_file_commands(ctx, cmds)
+}
+
+fn execute_repl_source(ctx: &mut EngineContext, source: &str) -> Result<(), String> {
+    let trimmed = source.trim();
+    if let Some(path) = trimmed.strip_prefix("load ") {
+        let path = path.trim().trim_matches('"');
+        return run_file(ctx, &PathBuf::from(path));
+    }
+    if let Some(name) = trimmed.strip_prefix("extract ") {
+        eprintln!("extract: not yet implemented for '{}'", name.trim());
+        return Ok(());
+    }
+    let cmds = parse_repl_commands(source)?;
+    execute_repl_commands(ctx, cmds)
+}
+
+fn execute_file_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<(), String> {
+    for cmd in cmds {
+        execute_file_command(ctx, cmd)?;
+    }
+    Ok(())
+}
+
+fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), String> {
+    match &cmd {
+        Command::Query(heads, vars) => {
+            let query = heads2query(heads, &ctx.table_types, &ctx.data_types, &mut ctx.interner)
+                .map_err(|e| format!("{:?}", e))?;
+            let (var_record, rows) = ctx.run_query(&query, vars);
+            print_query_result(&var_record, rows, ctx);
+            return Ok(());
+        }
+        Command::Run => {
+            ctx.run();
+            return Ok(());
+        }
+        _ => {}
+    }
+    let unit = Compiler::compile_command(
+        &cmd,
+        &mut ctx.data_types,
+        &mut ctx.table_types,
+        &mut ctx.interner,
+        &ctx.native_names,
+        &ctx.native_signatures,
+    )
+    .map_err(|e| format!("{:?}", e))?;
+    ctx.apply(unit);
+    Ok(())
+}
+
+fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<(), String> {
+    for cmd in cmds {
+        match cmd {
+            Command::Query(heads, vars) => {
+                let query =
+                    heads2query(&heads, &ctx.table_types, &ctx.data_types, &mut ctx.interner)
+                        .map_err(|e| format!("{:?}", e))?;
+                let (var_record, rows) = ctx.run_query(&query, &vars);
+                print_query_result(&var_record, rows, ctx);
+            }
+            Command::Run => {
+                ctx.run();
+            }
+            _ => {
+                let unit = Compiler::compile_command(
+                    &cmd,
+                    &mut ctx.data_types,
+                    &mut ctx.table_types,
+                    &mut ctx.interner,
+                    &ctx.native_names,
+                    &ctx.native_signatures,
+                )
+                .map_err(|e| format!("{:?}", e))?;
+                ctx.apply(unit);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_query_result(var_record: &VariableRecord, rows: Set<Row>, ctx: &EngineContext) {
+    for row in rows {
+        for (name, offset) in &var_record.names_map {
+            let ty = var_record.get_type(*offset).unwrap();
+            let value = row.0.get(*offset).unwrap();
+            let term = ctx.extract(*value, ty);
+            print!("{name}: {term}");
+        }
+        println!();
+    }
 }
 
 struct QuineValidator;
 impl Validator for QuineValidator {
     fn validate(&self, line: &str) -> ValidationResult {
         let trimmed = line.trim_start();
-        if trimmed.is_empty()
-            || trimmed == "exit"
-            || trimmed == "quit"
-            || trimmed.starts_with("load \"")
-        {
+        if trimmed.is_empty() || trimmed == "exit" || trimmed == "quit" {
             return ValidationResult::Complete;
         }
-        match parse_commands(line) {
+        match parse_repl_commands(line) {
             Ok(_) => ValidationResult::Complete,
             Err(_) => ValidationResult::Incomplete,
         }
@@ -137,58 +198,16 @@ fn run_repl(ctx: &mut EngineContext) {
                     continue;
                 }
 
-                // REPL meta-commands
-                match input {
-                    "exit" | "quit" => break,
-                    cmd if cmd.starts_with("load \"") => {
-                        let path = &cmd[6..cmd.len() - 1];
-                        match run_file(ctx, path) {
-                            Ok(()) => {}
-                            Err(e) => eprintln!("error: {e}"),
-                        }
-                        continue;
-                    }
-                    _ => {}
+                if input == "exit" || input == "quit" {
+                    break;
                 }
 
-                let cmds = parse_commands(input);
-                let Ok(cmds) = cmds else {
-                    eprintln!("error: {:?}", cmds.unwrap_err());
-                    continue;
-                };
-                if let Err(e) = execute_commands(ctx, cmds) {
-                    eprintln!("error: {e:?}");
+                if let Err(e) = execute_repl_source(ctx, input) {
+                    eprintln!("error: {e}");
                 }
             }
             Signal::CtrlC | Signal::CtrlD => break,
             _ => {}
-        }
-    }
-}
-
-fn execute_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<(), String> {
-    let cmds: Result<Vec<_>, _> = cmds
-        .into_iter()
-        .map(|cmd| ctx.check_and_compile_command(cmd))
-        .collect();
-    let Ok(cmds) = cmds else {
-        return Err(format!("{:?}", cmds.unwrap_err()));
-    };
-    for cmd in cmds {
-        if let Some((var_record, rows)) = ctx.run_command(cmd) {
-            print_query_result(&var_record, rows, ctx);
-        }
-    }
-    Ok(())
-}
-
-fn print_query_result(var_record: &VariableRecord, rows: Set<Row>, ctx: &EngineContext) {
-    for row in rows {
-        for (name, offset) in &var_record.names_map {
-            let ty = var_record.get_type(*offset).unwrap();
-            let value = row.0.get(*offset).unwrap();
-            let term = ctx.extract(*value, ty);
-            println!("{name}: {term}");
         }
     }
 }
