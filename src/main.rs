@@ -75,13 +75,9 @@ fn run_file(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
 
 fn execute_repl_source(ctx: &mut EngineContext, source: &str) -> Result<(), String> {
     let trimmed = source.trim();
-    if let Some(path) = trimmed.strip_prefix("load ") {
+    if let Some(path) = trimmed.strip_prefix(":load ") {
         let path = path.trim().trim_matches('"');
         return run_file(ctx, &PathBuf::from(path));
-    }
-    if let Some(name) = trimmed.strip_prefix("extract ") {
-        eprintln!("extract: not yet implemented for '{}'", name.trim());
-        return Ok(());
     }
     let cmds = parse_repl_commands(source)?;
     execute_repl_commands(ctx, cmds)
