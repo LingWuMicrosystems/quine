@@ -25,16 +25,9 @@ pub enum Command {
     TypeDef(String, TypeDef),
     TableDef(String, TableDef),
     Rule(Rule),
-    Load(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ReplCommand {
-    Cmd(Command),
     Fact(Bodys),
     Query(Heads, Vec<String>),
     Run,
-    Extract(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -282,26 +275,18 @@ impl Display for Command {
                 }
                 write!(f, " }}")
             }
-            Command::Load(path) => write!(f, "load \"{path}\""),
-        }
-    }
-}
-
-impl Display for ReplCommand {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            ReplCommand::Cmd(cmd) => write!(f, "{cmd}"),
-            ReplCommand::Fact(fact) => {
+            Command::Fact(bodies) => {
                 write!(
                     f,
                     "fact {}",
-                    fact.iter()
+                    bodies
+                        .iter()
                         .map(|b| b.to_string())
                         .collect::<Vec<_>>()
                         .join(" ")
                 )
             }
-            ReplCommand::Query(heads, vars) => {
+            Command::Query(heads, vars) => {
                 write!(f, "query ")?;
                 for (idx, head) in heads.iter().enumerate() {
                     if idx != 0 {
@@ -318,8 +303,7 @@ impl Display for ReplCommand {
                 }
                 write!(f, ")")
             }
-            ReplCommand::Run => write!(f, "run"),
-            ReplCommand::Extract(name) => write!(f, "extract {name}"),
+            Command::Run => write!(f, "run"),
         }
     }
 }
