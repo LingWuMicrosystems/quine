@@ -1,3 +1,4 @@
+use alloc::string::String;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Default, Clone)]

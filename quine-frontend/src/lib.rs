@@ -1,21 +1,30 @@
+#![no_std]
+
+extern crate alloc;
+
 pub mod compile;
 pub mod env;
 pub mod error;
 pub mod interner;
 pub mod prelude;
+pub mod syntax;
 pub mod term;
 
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use quine_core::common::{Map, Set, Value};
 use quine_core::related_egraph::{NativeFn, RelatedEGraph};
 use quine_core::rule::{self, Query, VariableRecord};
 use quine_core::table::Row;
 use quine_core::types::*;
-use smallvec::smallvec;
 
-use crate::engine::env::{CompileEnv, TableEnv};
-use crate::engine::interner::Interner;
-use crate::engine::term::Term;
+use crate::env::{CompileEnv, TableEnv};
+use crate::interner::Interner;
 use crate::syntax::Atom;
+use crate::term::Term;
 
 #[derive(Debug, Clone)]
 pub struct NativeSignature {
@@ -30,7 +39,7 @@ pub struct CompiledUnit {
     pub actions: Vec<rule::Action>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct EngineContext {
     pub data_types: CompileEnv,
     pub table_types: TableEnv,
@@ -38,33 +47,6 @@ pub struct EngineContext {
     pub regraph: RelatedEGraph,
     pub native_names: Map<String, usize>,
     pub native_signatures: Map<String, NativeSignature>,
-}
-
-impl Default for EngineContext {
-    fn default() -> Self {
-        let unit_type = TypeDef("Unit".to_owned(), SumType(Box::new([])));
-        let mut data_types = CompileEnv::default();
-        let _ = data_types.insert("Unit".to_owned(), unit_type.clone());
-
-        let unit_table = TableDef("Unit".to_owned(), Box::new([Type::Base(BaseType::Id)]));
-        let mut table_types = TableEnv::default();
-        let mut regraph = RelatedEGraph::default();
-        let _ = table_types.insert("Unit".to_owned(), unit_table.clone());
-        regraph.add_table(unit_table);
-        let new_id = regraph.alloc_id();
-        regraph.insert(0, Row(smallvec![]), new_id);
-
-        let mut ctx = Self {
-            data_types,
-            table_types,
-            interner: Interner::default(),
-            regraph,
-            native_names: Map::default(),
-            native_signatures: Map::default(),
-        };
-        crate::engine::prelude::register_prelude(&mut ctx);
-        ctx
-    }
 }
 
 impl EngineContext {
@@ -77,15 +59,11 @@ impl EngineContext {
         }
         for action in unit.actions {
             self.regraph
-                .apply_action(&action, Set::from_iter([Row(smallvec![])]));
+                .apply_action(&action, Set::from_iter([Row::default()]));
         }
     }
 
-    pub fn run_query(
-        &mut self,
-        query: &Query,
-        vars: &[String],
-    ) -> (VariableRecord, Set<Row>) {
+    pub fn run_query(&mut self, query: &Query, vars: &[String]) -> (VariableRecord, Set<Row>) {
         let mut result = self.regraph.run_query(query);
         if vars.is_empty() {
             return (query.variables.clone(), result);

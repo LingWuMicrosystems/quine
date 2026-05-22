@@ -1,13 +1,12 @@
 use std::env;
 use std::{borrow::Cow, fs, path::PathBuf};
 
-use quine::{
-    engine::EngineContext,
-    engine::compile::Compiler,
-    engine::compile::head2query::heads2query,
-    syntax::Command,
-    syntax::pest_parser::{parse_file, parse_repl_commands},
-};
+use quine_frontend::EngineContext;
+use quine_frontend::compile::Compiler;
+use quine_frontend::compile::head2query::heads2query;
+use quine_frontend::syntax::Command;
+
+use quine::pest_parser::{parse_file, parse_repl_commands};
 
 use quine_core::common::Set;
 use quine_core::rule::VariableRecord;

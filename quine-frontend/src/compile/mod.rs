@@ -1,17 +1,20 @@
 pub mod body2action;
 pub mod head2query;
 
+use alloc::string::String;
+use alloc::vec::Vec;
+use alloc::{format, vec};
 use quine_core::rule::VariableRecord;
 use quine_core::types::*;
 use quine_core::{common::*, rule};
 
-use crate::engine::compile::body2action::{bodys2action, CompileCtx};
-use crate::engine::compile::head2query::heads2query;
-use crate::engine::env::{CompileEnv, TableEnv};
-use crate::engine::error::CompileError;
-use crate::engine::interner::Interner;
-use crate::engine::{CompiledUnit, NativeSignature};
+use crate::compile::body2action::{CompileCtx, bodys2action};
+use crate::compile::head2query::heads2query;
+use crate::env::{CompileEnv, TableEnv};
+use crate::error::CompileError;
+use crate::interner::Interner;
 use crate::syntax::{self, Atom, Bodys, Command};
+use crate::{CompiledUnit, NativeSignature};
 
 pub struct Compiler;
 
@@ -27,7 +30,7 @@ impl Compiler {
         match cmd {
             Command::TypeDef(name, type_def) => {
                 let mut table_defs = vec![];
-                for cons in &type_def.1 .0 {
+                for cons in &type_def.1.0 {
                     let table_name = format!("{}.{}", name, cons.0);
                     let mut cols: Vec<Type> = cons.1.to_vec();
                     cols.push(Type::Base(BaseType::Id));
@@ -68,7 +71,9 @@ impl Compiler {
                     actions: vec![],
                 })
             }
-            Command::Fact(fact) => Self::compile_fact(fact, table_types, interner, native_names, native_signatures),
+            Command::Fact(fact) => {
+                Self::compile_fact(fact, table_types, interner, native_names, native_signatures)
+            }
             Command::Query(..) | Command::Run => Ok(CompiledUnit {
                 table_defs: vec![],
                 rules: vec![],

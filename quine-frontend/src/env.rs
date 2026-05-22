@@ -1,9 +1,11 @@
+use alloc::{borrow::ToOwned, boxed::Box, string::String, vec::Vec};
+use alloc::{format, vec};
 use quine_core::{
     common::Map,
     types::{BaseType, TableDef, Type, TypeDef},
 };
 
-use crate::engine::error::CompileError;
+use crate::error::CompileError;
 
 pub type CompileEnv = DataTypeEnv;
 

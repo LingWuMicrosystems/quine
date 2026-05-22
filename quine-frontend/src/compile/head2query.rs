@@ -1,13 +1,12 @@
 use crate::{
-    engine::{
-        compile::atom_to_value,
-        env::{DataTypeEnv, TableEnv},
-        error::CompileError,
-        interner::Interner,
-    },
+    compile::atom_to_value,
+    env::{DataTypeEnv, TableEnv},
+    error::CompileError,
+    interner::Interner,
     syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
 };
 
+use alloc::{format, vec::Vec};
 use quine_core::{common::*, rule::*, types::*};
 
 struct QueryCtx<'a> {

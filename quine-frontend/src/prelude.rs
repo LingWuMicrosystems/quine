@@ -1,6 +1,6 @@
 use quine_core::{common::Value, related_egraph::NativeFn, types::BaseType};
 
-use crate::engine::EngineContext;
+use crate::EngineContext;
 
 fn add(args: &[Value]) -> Value {
     Value(args[0].0.wrapping_add(args[1].0))
