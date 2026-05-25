@@ -1,4 +1,5 @@
 /// related e-graph
+use alloc::string::String;
 use alloc::vec::Vec;
 use smallvec::ToSmallVec;
 
@@ -15,8 +16,17 @@ use crate::{
 
 pub type TableId = usize;
 pub type RuleId = usize;
+pub type GroupName = String;
 
 pub type NativeFn = fn(input: &[Value]) -> Value;
+
+pub type RuleGroup = Set<RuleId>;
+
+#[derive(Debug, Clone)]
+pub enum RunMode {
+    Saturate,
+    Times(usize),
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct RelatedEGraph {
@@ -29,6 +39,7 @@ pub struct RelatedEGraph {
 
     ruleset: Vec<Rule>,
     rule_deps: Map<TableId, Vec<RuleId>>,
+    rule_groups: Map<GroupName, RuleGroup>,
 }
 
 impl RelatedEGraph {
@@ -36,17 +47,41 @@ impl RelatedEGraph {
         self.tables.push(Table::new(table_def));
     }
 
-    pub fn add_rule(&mut self, rule: Rule) {
+    pub fn add_rule(&mut self, group_name: Option<GroupName>, rule: Rule) {
         let rule_id = self.ruleset.len();
         for t in rule.query.tables().iter() {
             self.rule_deps.entry(*t).or_default().push(rule_id);
         }
         self.ruleset.push(rule);
+        if let Some(group_name) = group_name {
+            self.rule_groups
+                .entry(group_name)
+                .or_default()
+                .insert(rule_id);
+        }
     }
 
+    /// Run all rules to fixpoint (backward compat).
     pub fn run(&mut self) {
+        self.run_all(RunMode::Saturate);
+    }
+
+    /// Run all rules with the given mode.
+    pub fn run_all(&mut self, mode: RunMode) {
+        self.run_semi_naive(None, mode);
+    }
+
+    /// Run rules in the named group with the given mode.
+    pub fn run_group(&mut self, group_name: &str, mode: RunMode) {
+        if let Some(rules) = self.rule_groups.get(group_name).cloned() {
+            self.run_semi_naive(Some(&rules), mode);
+        }
+    }
+
+    fn run_semi_naive(&mut self, rule_filter: Option<&RuleGroup>, mode: RunMode) {
+        let mut iteration = 0;
         loop {
-            // Collect (driver_table, rule) pairs for tables that have delta rows
+            // Collect (driver_table, rule) pairs, optionally filtered by group
             let pairs: Vec<(TableId, RuleId)> = (0..self.tables.len())
                 .filter(|tid| self.tables[*tid].has_delta())
                 .flat_map(|tid| {
@@ -54,6 +89,7 @@ impl RelatedEGraph {
                         .get(&tid)
                         .into_iter()
                         .flatten()
+                        .filter(|rid| rule_filter.map_or(true, |r| r.contains(rid)))
                         .map(move |rid| (tid, *rid))
                 })
                 .collect::<Set<(TableId, RuleId)>>()
@@ -100,6 +136,11 @@ impl RelatedEGraph {
                 if !rebuild_affected.contains(&tid) {
                     self.tables[tid].delta_start_row = snapshots[tid];
                 }
+            }
+
+            iteration += 1;
+            if matches!(mode, RunMode::Times(n) if iteration >= n) {
+                return;
             }
         }
     }

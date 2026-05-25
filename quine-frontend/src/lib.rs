@@ -55,7 +55,7 @@ impl EngineContext {
             self.regraph.add_table(table_def);
         }
         for rule in unit.rules {
-            self.regraph.add_rule(rule);
+            self.regraph.add_rule(None, rule);
         }
         for action in unit.actions {
             self.regraph
