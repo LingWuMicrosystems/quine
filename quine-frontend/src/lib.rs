@@ -16,7 +16,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use quine_core::common::{Map, Set, Value};
-use quine_core::related_egraph::{NativeFn, RelatedEGraph};
+use quine_core::related_egraph::{NativeFn, RelatedEGraph, RunMode};
 use quine_core::rule::{self, Query, VariableRecord};
 use quine_core::table::Row;
 use quine_core::types::*;
@@ -35,7 +35,7 @@ pub struct NativeSignature {
 #[derive(Debug, Default, Clone)]
 pub struct CompiledUnit {
     pub table_defs: Vec<TableDef>,
-    pub rules: Vec<rule::Rule>,
+    pub rules: Vec<(Option<String>, rule::Rule)>,
     pub actions: Vec<rule::Action>,
 }
 
@@ -54,8 +54,8 @@ impl EngineContext {
         for table_def in unit.table_defs {
             self.regraph.add_table(table_def);
         }
-        for rule in unit.rules {
-            self.regraph.add_rule(rule);
+        for (group, rule) in unit.rules {
+            self.regraph.add_rule(group, rule);
         }
         for action in unit.actions {
             self.regraph
@@ -87,6 +87,14 @@ impl EngineContext {
 
     pub fn run(&mut self) {
         self.regraph.run();
+    }
+
+    pub fn run_all(&mut self, mode: RunMode) {
+        self.regraph.run_all(mode);
+    }
+
+    pub fn run_group(&mut self, group_name: &str, mode: RunMode) {
+        self.regraph.run_group(group_name, mode);
     }
 
     pub fn register_native(

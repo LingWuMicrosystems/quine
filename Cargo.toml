@@ -9,17 +9,17 @@ members = ["quine-core", "quine-frontend"]
 [workspace.dependencies]
 smallvec = "1.15.1"
 rustc-hash = "2.1.2"
+rayon = "1.12.0"
 quine-core = { path="./quine-core" }
 quine-frontend = { path="./quine-frontend" }
 
 [dependencies]
 smallvec = { workspace = true }
 rustc-hash = { workspace = true }
-quine-core = { workspace = true }
+quine-core = { workspace = true, features = ["std"] }
 quine-frontend = { workspace = true }
 
-
-# rayon = "1.12.0"
+rayon = "1.12.0"
 
 pest = { version = "2.7" }
 pest_derive = { version = "2.7" }

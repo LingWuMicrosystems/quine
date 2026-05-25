@@ -1,10 +1,10 @@
 use std::env;
 use std::{borrow::Cow, fs, path::PathBuf};
 
+use quine_frontend::syntax::{Command, Run as SyntaxRun, RunBody};
 use quine_frontend::EngineContext;
 use quine_frontend::compile::Compiler;
 use quine_frontend::compile::head2query::heads2query;
-use quine_frontend::syntax::Command;
 
 use quine::pest_parser::{parse_file, parse_repl_commands};
 
@@ -98,8 +98,8 @@ fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), Str
             print_query_result(&var_record, rows, ctx);
             return Ok(());
         }
-        Command::Run => {
-            ctx.run();
+        Command::Run(run) => {
+            execute_run(ctx, run);
             return Ok(());
         }
         _ => {}
@@ -127,8 +127,8 @@ fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<
                 let (var_record, rows) = ctx.run_query(&query, &vars);
                 print_query_result(&var_record, rows, ctx);
             }
-            Command::Run => {
-                ctx.run();
+            Command::Run(run) => {
+                execute_run(ctx, &run);
             }
             _ => {
                 let unit = Compiler::compile_command(
@@ -145,6 +145,18 @@ fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<
         }
     }
     Ok(())
+}
+
+fn execute_run(ctx: &mut EngineContext, run: &SyntaxRun) {
+    let SyntaxRun(mode, body) = run;
+    match body {
+        RunBody::All => ctx.run_all(*mode),
+        RunBody::Group(name) => ctx.run_group(name, *mode),
+        RunBody::Program(inner) => {
+            execute_run(ctx, inner);
+            ctx.run_all(*mode);
+        }
+    }
 }
 
 fn print_query_result(var_record: &VariableRecord, rows: Set<Row>, ctx: &EngineContext) {

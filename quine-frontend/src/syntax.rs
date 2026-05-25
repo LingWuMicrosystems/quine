@@ -7,6 +7,7 @@ use alloc::{
 };
 use quine_core::{
     common::Set,
+    related_egraph::{GroupName, RunMode},
     rule::Op,
     types::{BaseType, TableDef, TypeDef},
 };
@@ -30,11 +31,22 @@ pub enum Command {
     Rule(Rule),
     Fact(Bodys),
     Query(Heads, Vec<String>),
-    Run,
+    Run(Run),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Run(pub RunMode, pub RunBody);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RunBody {
+    All,
+    Group(GroupName),
+    Program(Box<Run>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Rule {
+    pub group: Option<String>,
     pub heads: Heads,
     pub bodys: Bodys,
 }
@@ -261,7 +273,7 @@ impl Display for Command {
         match self {
             Command::TypeDef(_, def) => write!(f, "{def}"),
             Command::TableDef(_, def) => write!(f, "{def}"),
-            Command::Rule(Rule { heads, bodys }) => {
+            Command::Rule(Rule { heads, bodys, .. }) => {
                 write!(f, "rule ")?;
                 for (idx, head) in heads.iter().enumerate() {
                     if idx != 0 {
@@ -306,7 +318,7 @@ impl Display for Command {
                 }
                 write!(f, ")")
             }
-            Command::Run => write!(f, "run"),
+            Command::Run(..) => write!(f, "run"),
         }
     }
 }

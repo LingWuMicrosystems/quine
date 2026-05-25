@@ -1,6 +1,6 @@
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
-KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "run" | "=" | op }
+KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "run" | "saturate" | "repeat" | "=" | op | "{" | "}" | ";" }
 
 TOP_LEVEL = {
     command*
@@ -16,10 +16,16 @@ command = {
   | run
 }
 
-run = @{ "run" }
+run = { "run" ~ run_item }
+
+run_mode = { "saturate" | ("repeat" ~ integer) }
+
+run_item = { run_mode ~ run_body? }
+
+run_body = { string | "{" ~ run_item ~ "}" }
 
 rule = {
-    "rule" ~ heads ~ "{" ~ bodies ~ "}"
+    "rule" ~ string? ~ heads ~ "{" ~ bodies ~ "}"
 }
 
 fact = { "fact" ~ bodies }

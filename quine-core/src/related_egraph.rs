@@ -1,8 +1,10 @@
 /// related e-graph
-use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::vec::Vec;
-// use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use smallvec::ToSmallVec;
+
+#[cfg(feature = "std")]
+use rayon::prelude::*;
 
 use crate::{
     common::{ColumnIndex, Map, RowIndex, Set, Value, VarId},
@@ -14,8 +16,17 @@ use crate::{
 
 pub type TableId = usize;
 pub type RuleId = usize;
+pub type GroupName = String;
 
 pub type NativeFn = fn(input: &[Value]) -> Value;
+
+pub type RuleGroup = Set<RuleId>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RunMode {
+    Saturate,
+    Repeat(usize),
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct RelatedEGraph {
@@ -28,6 +39,7 @@ pub struct RelatedEGraph {
 
     ruleset: Vec<Rule>,
     rule_deps: Map<TableId, Vec<RuleId>>,
+    rule_groups: Map<GroupName, RuleGroup>,
 }
 
 impl RelatedEGraph {
@@ -35,17 +47,41 @@ impl RelatedEGraph {
         self.tables.push(Table::new(table_def));
     }
 
-    pub fn add_rule(&mut self, rule: Rule) {
+    pub fn add_rule(&mut self, group_name: Option<GroupName>, rule: Rule) {
         let rule_id = self.ruleset.len();
         for t in rule.query.tables().iter() {
             self.rule_deps.entry(*t).or_default().push(rule_id);
         }
         self.ruleset.push(rule);
+        if let Some(group_name) = group_name {
+            self.rule_groups
+                .entry(group_name)
+                .or_default()
+                .insert(rule_id);
+        }
     }
 
+    /// Run all rules to fixpoint (backward compat).
     pub fn run(&mut self) {
+        self.run_all(RunMode::Saturate);
+    }
+
+    /// Run all rules with the given mode.
+    pub fn run_all(&mut self, mode: RunMode) {
+        self.run_semi_naive(None, mode);
+    }
+
+    /// Run rules in the named group with the given mode.
+    pub fn run_group(&mut self, group_name: &str, mode: RunMode) {
+        if let Some(rules) = self.rule_groups.get(group_name).cloned() {
+            self.run_semi_naive(Some(&rules), mode);
+        }
+    }
+
+    fn run_semi_naive(&mut self, rule_filter: Option<&RuleGroup>, mode: RunMode) {
+        let mut iteration = 0;
         loop {
-            // Collect (driver_table, rule) pairs for tables that have delta rows
+            // Collect (driver_table, rule) pairs, optionally filtered by group
             let pairs: Vec<(TableId, RuleId)> = (0..self.tables.len())
                 .filter(|tid| self.tables[*tid].has_delta())
                 .flat_map(|tid| {
@@ -53,6 +89,7 @@ impl RelatedEGraph {
                         .get(&tid)
                         .into_iter()
                         .flatten()
+                        .filter(|rid| rule_filter.map_or(true, |r| r.contains(rid)))
                         .map(move |rid| (tid, *rid))
                 })
                 .collect::<Set<(TableId, RuleId)>>()
@@ -66,10 +103,27 @@ impl RelatedEGraph {
             // Snapshot current row counts so new delta only includes rows added this round
             let snapshots: Vec<usize> = self.tables.iter().map(|t| t.row_count).collect();
 
-            // Semi-naive: delta(driver_table) ⋈ full(other tables)
-            for (driver_table, rule_id) in &pairs {
-                let query = &self.ruleset[*rule_id].query;
-                let rows = self.run_query(query, Some(*driver_table));
+            // Phase 1: semi-naive queries (parallel with std feature)
+            #[cfg(feature = "std")]
+            let results: Vec<Set<Row>> = pairs
+                .par_iter()
+                .map(|(driver_table, rule_id)| {
+                    let query = &self.ruleset[*rule_id].query;
+                    self.run_query(query, Some(*driver_table))
+                })
+                .collect();
+
+            #[cfg(not(feature = "std"))]
+            let results: Vec<Set<Row>> = pairs
+                .iter()
+                .map(|(driver_table, rule_id)| {
+                    let query = &self.ruleset[*rule_id].query;
+                    self.run_query(query, Some(*driver_table))
+                })
+                .collect();
+
+            // Phase 2: apply actions (always serial)
+            for ((_driver_table, rule_id), rows) in pairs.iter().zip(results) {
                 let action = &self.ruleset[*rule_id].action.clone();
                 self.apply_action(action, rows);
             }
@@ -82,6 +136,11 @@ impl RelatedEGraph {
                 if !rebuild_affected.contains(&tid) {
                     self.tables[tid].delta_start_row = snapshots[tid];
                 }
+            }
+
+            iteration += 1;
+            if matches!(mode, RunMode::Repeat(n) if iteration >= n) {
+                return;
             }
         }
     }
@@ -135,12 +194,9 @@ impl RelatedEGraph {
                 let table = &self.tables[step.table];
                 let col_indices: Vec<ColumnIndex> = step.columns.iter().map(|(c, _)| *c).collect();
                 let use_delta = delta_table == Some(step.table) && table.has_delta();
-                let iter: Box<dyn Iterator<Item = Row>> = if use_delta {
-                    Box::new(table.fused_scan_delta(&self.union_find, &col_indices, &step.constraints))
-                } else {
-                    Box::new(table.fused_scan(&self.union_find, &col_indices, &step.constraints))
-                };
-                iter.collect()
+                table
+                    .fused_scan(&self.union_find, &col_indices, &step.constraints, use_delta)
+                    .collect()
             })
             .collect();
 

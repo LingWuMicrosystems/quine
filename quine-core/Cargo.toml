@@ -3,6 +3,11 @@ name = "quine-core"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+std = ["rayon"]
+
 [dependencies]
 rustc-hash = { workspace = true }
 smallvec = { workspace = true }
+rayon = { workspace = true, optional = true }
