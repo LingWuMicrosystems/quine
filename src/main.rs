@@ -9,6 +9,7 @@ use quine_frontend::syntax::Command;
 use quine::pest_parser::{parse_file, parse_repl_commands};
 
 use quine_core::common::Set;
+use quine_core::related_egraph::RunMode;
 use quine_core::rule::VariableRecord;
 use quine_core::table::Row;
 
@@ -98,8 +99,12 @@ fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), Str
             print_query_result(&var_record, rows, ctx);
             return Ok(());
         }
-        Command::Run => {
-            ctx.run();
+        Command::Run(group, repeat) => {
+            let mode = repeat.map_or(RunMode::Saturate, RunMode::Times);
+            match group {
+                Some(g) => ctx.run_group(&g, mode),
+                None => ctx.run_all(mode),
+            }
             return Ok(());
         }
         _ => {}
@@ -127,8 +132,12 @@ fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<
                 let (var_record, rows) = ctx.run_query(&query, &vars);
                 print_query_result(&var_record, rows, ctx);
             }
-            Command::Run => {
-                ctx.run();
+            Command::Run(group, repeat) => {
+                let mode = repeat.map_or(RunMode::Saturate, RunMode::Times);
+                match group {
+                    Some(g) => ctx.run_group(&g, mode),
+                    None => ctx.run_all(mode),
+                }
             }
             _ => {
                 let unit = Compiler::compile_command(

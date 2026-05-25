@@ -16,7 +16,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use quine_core::common::{Map, Set, Value};
-use quine_core::related_egraph::{NativeFn, RelatedEGraph};
+use quine_core::related_egraph::{NativeFn, RelatedEGraph, RunMode};
 use quine_core::rule::{self, Query, VariableRecord};
 use quine_core::table::Row;
 use quine_core::types::*;
@@ -87,6 +87,14 @@ impl EngineContext {
 
     pub fn run(&mut self) {
         self.regraph.run();
+    }
+
+    pub fn run_all(&mut self, mode: RunMode) {
+        self.regraph.run_all(mode);
+    }
+
+    pub fn run_group(&mut self, group_name: &str, mode: RunMode) {
+        self.regraph.run_group(group_name, mode);
     }
 
     pub fn register_native(

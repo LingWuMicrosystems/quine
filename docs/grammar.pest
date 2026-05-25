@@ -16,7 +16,7 @@ command = {
   | run
 }
 
-run = @{ "run" }
+run = { "run" ~ string? ~ ("saturate" | ("repeat" ~ integer)) }
 
 rule = {
     "rule" ~ string? ~ heads ~ "{" ~ bodies ~ "}"

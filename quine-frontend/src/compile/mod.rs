@@ -74,7 +74,7 @@ impl Compiler {
             Command::Fact(fact) => {
                 Self::compile_fact(fact, table_types, interner, native_names, native_signatures)
             }
-            Command::Query(..) | Command::Run => Ok(CompiledUnit {
+            Command::Query(..) | Command::Run(..) => Ok(CompiledUnit {
                 table_defs: vec![],
                 rules: vec![],
                 actions: vec![],

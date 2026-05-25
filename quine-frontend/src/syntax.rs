@@ -30,7 +30,7 @@ pub enum Command {
     Rule(Rule),
     Fact(Bodys),
     Query(Heads, Vec<String>),
-    Run,
+    Run(Option<String>, Option<usize>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -307,7 +307,7 @@ impl Display for Command {
                 }
                 write!(f, ")")
             }
-            Command::Run => write!(f, "run"),
+            Command::Run(..) => write!(f, "run"),
         }
     }
 }
