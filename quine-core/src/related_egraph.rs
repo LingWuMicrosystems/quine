@@ -1,7 +1,9 @@
 /// related e-graph
 use alloc::vec::Vec;
-// use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use smallvec::ToSmallVec;
+
+#[cfg(feature = "std")]
+use rayon::prelude::*;
 
 use crate::{
     common::{ColumnIndex, Map, RowIndex, Set, Value, VarId},
@@ -65,10 +67,27 @@ impl RelatedEGraph {
             // Snapshot current row counts so new delta only includes rows added this round
             let snapshots: Vec<usize> = self.tables.iter().map(|t| t.row_count).collect();
 
-            // Semi-naive: delta(driver_table) ⋈ full(other tables)
-            for (driver_table, rule_id) in &pairs {
-                let query = &self.ruleset[*rule_id].query;
-                let rows = self.run_query(query, Some(*driver_table));
+            // Phase 1: semi-naive queries (parallel with std feature)
+            #[cfg(feature = "std")]
+            let results: Vec<Set<Row>> = pairs
+                .par_iter()
+                .map(|(driver_table, rule_id)| {
+                    let query = &self.ruleset[*rule_id].query;
+                    self.run_query(query, Some(*driver_table))
+                })
+                .collect();
+
+            #[cfg(not(feature = "std"))]
+            let results: Vec<Set<Row>> = pairs
+                .iter()
+                .map(|(driver_table, rule_id)| {
+                    let query = &self.ruleset[*rule_id].query;
+                    self.run_query(query, Some(*driver_table))
+                })
+                .collect();
+
+            // Phase 2: apply actions (always serial)
+            for ((_driver_table, rule_id), rows) in pairs.iter().zip(results) {
                 let action = &self.ruleset[*rule_id].action.clone();
                 self.apply_action(action, rows);
             }
