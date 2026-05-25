@@ -64,7 +64,7 @@ impl EngineContext {
     }
 
     pub fn run_query(&mut self, query: &Query, vars: &[String]) -> (VariableRecord, Set<Row>) {
-        let mut result = self.regraph.run_query(query);
+        let mut result = self.regraph.run_query(query, None);
         if vars.is_empty() {
             return (query.variables.clone(), result);
         }
@@ -86,7 +86,6 @@ impl EngineContext {
     }
 
     pub fn run(&mut self) {
-        self.regraph.set_fully_dirty();
         self.regraph.run();
     }
 

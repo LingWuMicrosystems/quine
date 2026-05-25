@@ -1,4 +1,5 @@
 /// related e-graph
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use smallvec::ToSmallVec;
@@ -22,7 +23,6 @@ pub struct RelatedEGraph {
     tables: Vec<Table>,
 
     pending_unions: Vec<(Value, Value)>,
-    dirty_tables: Vec<TableId>,
 
     native_functions: Vec<NativeFn>,
 
@@ -43,48 +43,46 @@ impl RelatedEGraph {
         self.ruleset.push(rule);
     }
 
-    pub fn set_dirty(&mut self, table_id: TableId) {
-        if !self.dirty_tables.contains(&table_id) {
-            self.dirty_tables.push(table_id);
-        }
-    }
-
-    pub fn set_fully_dirty(&mut self) {
-        self.dirty_tables = (0..self.tables.len()).collect();
-    }
-
     pub fn run(&mut self) {
         loop {
-            let app_rules: Vec<_> = self
-                .dirty_tables
-                .iter()
-                .flat_map(|table| self.rule_deps.get(table).cloned())
-                .flatten()
-                .collect::<Set<RuleId>>()
+            // Collect (driver_table, rule) pairs for tables that have delta rows
+            let pairs: Vec<(TableId, RuleId)> = (0..self.tables.len())
+                .filter(|tid| self.tables[*tid].has_delta())
+                .flat_map(|tid| {
+                    self.rule_deps
+                        .get(&tid)
+                        .into_iter()
+                        .flatten()
+                        .map(move |rid| (tid, *rid))
+                })
+                .collect::<Set<(TableId, RuleId)>>()
                 .into_iter()
                 .collect();
 
-            if app_rules.is_empty() {
+            if pairs.is_empty() {
                 return;
             }
-            self.dirty_tables.clear();
 
-            // batched query
-            let rules_rows: Vec<Set<Row>> = app_rules
-                .iter()
-                .map(|rule_id| {
-                    let query = &self.ruleset[*rule_id].query;
-                    self.run_query(query)
-                })
-                .collect();
+            // Snapshot current row counts so new delta only includes rows added this round
+            let snapshots: Vec<usize> = self.tables.iter().map(|t| t.row_count).collect();
 
-            // apply actions
-            for (rule_id, rows) in app_rules.iter().zip(rules_rows) {
+            // Semi-naive: delta(driver_table) ⋈ full(other tables)
+            for (driver_table, rule_id) in &pairs {
+                let query = &self.ruleset[*rule_id].query;
+                let rows = self.run_query(query, Some(*driver_table));
                 let action = &self.ruleset[*rule_id].action.clone();
                 self.apply_action(action, rows);
             }
 
-            self.rebuild();
+            let rebuild_affected = self.rebuild();
+
+            // New delta = rows added since snapshot,
+            // unless rebuild already reset it to 0 for a full re-scan.
+            for tid in 0..self.tables.len() {
+                if !rebuild_affected.contains(&tid) {
+                    self.tables[tid].delta_start_row = snapshots[tid];
+                }
+            }
         }
     }
 
@@ -129,16 +127,20 @@ impl RelatedEGraph {
         }
     }
 
-    pub fn run_query(&self, query: &Query) -> Set<Row> {
+    pub fn run_query(&self, query: &Query, delta_table: Option<TableId>) -> Set<Row> {
         let step_results: Vec<Vec<Row>> = query
             .scan_steps
             .iter()
             .map(|step| {
                 let table = &self.tables[step.table];
                 let col_indices: Vec<ColumnIndex> = step.columns.iter().map(|(c, _)| *c).collect();
-                table
-                    .fused_scan(&self.union_find, &col_indices, &step.constraints)
-                    .collect()
+                let use_delta = delta_table == Some(step.table) && table.has_delta();
+                let iter: Box<dyn Iterator<Item = Row>> = if use_delta {
+                    Box::new(table.fused_scan_delta(&self.union_find, &col_indices, &step.constraints))
+                } else {
+                    Box::new(table.fused_scan(&self.union_find, &col_indices, &step.constraints))
+                };
+                iter.collect()
             })
             .collect();
 
@@ -215,7 +217,6 @@ impl RelatedEGraph {
         let table = &mut self.tables[table_id];
         debug_assert_eq!(key.0.len(), table.arity());
         table.insert(&mut self.union_find, key, value);
-        self.set_dirty(table_id);
     }
 
     pub fn union(&mut self, old: Value, new: Value) {
@@ -224,7 +225,8 @@ impl RelatedEGraph {
         }
     }
 
-    pub fn rebuild(&mut self) {
+    pub fn rebuild(&mut self) -> Set<TableId> {
+        let mut affected = Set::default();
         while let Some((_parent, child)) = self.pending_unions.pop() {
             for tid in 0..self.tables.len() {
                 let table = &self.tables[tid];
@@ -238,7 +240,10 @@ impl RelatedEGraph {
                     .collect();
 
                 if !pairs.is_empty() {
-                    self.set_dirty(tid);
+                    // Rebuild changed equivalence classes for this table.
+                    // Reset delta to force a full re-scan next iteration.
+                    self.tables[tid].delta_start_row = 0;
+                    affected.insert(tid);
                     let new_pairs: Vec<_> = pairs
                         .into_iter()
                         .flat_map(|(old, new)| self.union_find.union(old, new))
@@ -247,6 +252,7 @@ impl RelatedEGraph {
                 }
             }
         }
+        affected
     }
 
     pub fn register_native_fn(&mut self, func: NativeFn) -> usize {
