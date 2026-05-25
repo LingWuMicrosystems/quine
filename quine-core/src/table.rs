@@ -125,46 +125,13 @@ impl Table {
         uf: &UnionFind,
         find_columns: &[ColumnIndex],
         constraints: &[Constraint],
+        use_delta: bool,
     ) -> impl Iterator<Item = Row> {
-        self.rows
-            .chunks(self.column_count())
-            .map(|row| {
-                let row = row
-                    .iter()
-                    .zip(self.table_def.1.iter())
-                    .map(|(v, ty)| {
-                        if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
-                            uf.find(*v)
-                        } else {
-                            *v
-                        }
-                    })
-                    .collect();
-                Row(row)
-            })
-            .filter(|row| {
-                constraints.iter().all(|c| match c.op {
-                    Op::Equ => row.0[c.column.0] == c.value,
-                    Op::Neq => row.0[c.column.0] != c.value,
-                    Op::Lt => row.0[c.column.0] < c.value,
-                    Op::Gt => row.0[c.column.0] > c.value,
-                    Op::Leq => row.0[c.column.0] <= c.value,
-                    Op::Geq => row.0[c.column.0] >= c.value,
-                })
-            })
-            .map(|row| {
-                let row = find_columns.iter().map(|c| row.0[c.0]).collect();
-                Row(row)
-            })
-    }
-
-    pub fn fused_scan_delta(
-        &self,
-        uf: &UnionFind,
-        find_columns: &[ColumnIndex],
-        constraints: &[Constraint],
-    ) -> impl Iterator<Item = Row> {
-        let start = self.delta_start_row * self.column_count();
+        let start = if use_delta {
+            self.delta_start_row * self.column_count()
+        } else {
+            0
+        };
         self.rows[start..]
             .chunks(self.column_count())
             .map(|row| {

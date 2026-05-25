@@ -1,5 +1,4 @@
 /// related e-graph
-use alloc::boxed::Box;
 use alloc::vec::Vec;
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use smallvec::ToSmallVec;
@@ -135,12 +134,9 @@ impl RelatedEGraph {
                 let table = &self.tables[step.table];
                 let col_indices: Vec<ColumnIndex> = step.columns.iter().map(|(c, _)| *c).collect();
                 let use_delta = delta_table == Some(step.table) && table.has_delta();
-                let iter: Box<dyn Iterator<Item = Row>> = if use_delta {
-                    Box::new(table.fused_scan_delta(&self.union_find, &col_indices, &step.constraints))
-                } else {
-                    Box::new(table.fused_scan(&self.union_find, &col_indices, &step.constraints))
-                };
-                iter.collect()
+                table
+                    .fused_scan(&self.union_find, &col_indices, &step.constraints, use_delta)
+                    .collect()
             })
             .collect();
 
