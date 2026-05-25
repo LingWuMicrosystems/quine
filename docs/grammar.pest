@@ -19,7 +19,7 @@ command = {
 run = @{ "run" }
 
 rule = {
-    "rule" ~ heads ~ "{" ~ bodies ~ "}"
+    "rule" ~ string? ~ heads ~ "{" ~ bodies ~ "}"
 }
 
 fact = { "fact" ~ bodies }

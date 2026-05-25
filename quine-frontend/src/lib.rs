@@ -35,7 +35,7 @@ pub struct NativeSignature {
 #[derive(Debug, Default, Clone)]
 pub struct CompiledUnit {
     pub table_defs: Vec<TableDef>,
-    pub rules: Vec<rule::Rule>,
+    pub rules: Vec<(Option<String>, rule::Rule)>,
     pub actions: Vec<rule::Action>,
 }
 
@@ -54,8 +54,8 @@ impl EngineContext {
         for table_def in unit.table_defs {
             self.regraph.add_table(table_def);
         }
-        for rule in unit.rules {
-            self.regraph.add_rule(None, rule);
+        for (group, rule) in unit.rules {
+            self.regraph.add_rule(group, rule);
         }
         for action in unit.actions {
             self.regraph

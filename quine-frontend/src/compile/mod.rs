@@ -67,7 +67,7 @@ impl Compiler {
                 )?;
                 Ok(CompiledUnit {
                     table_defs: vec![],
-                    rules: vec![compiled],
+                    rules: vec![(rule.group.clone(), compiled)],
                     actions: vec![],
                 })
             }

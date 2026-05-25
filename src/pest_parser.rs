@@ -234,9 +234,19 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
         }
         Rule::rule => {
             let mut parts = inner.into_inner();
-            let heads = parse_heads(parts.next().unwrap());
-            let bodys = parse_bodies(parts.next().unwrap());
-            Command::Rule(SyntaxRule { heads, bodys })
+            let first = parts.next().unwrap();
+            let (group, heads, bodys) = if first.as_rule() == Rule::string {
+                let s = first.as_str();
+                let group = Some(s[1..s.len() - 1].into());
+                let heads = parse_heads(parts.next().unwrap());
+                let bodys = parse_bodies(parts.next().unwrap());
+                (group, heads, bodys)
+            } else {
+                let heads = parse_heads(first);
+                let bodys = parse_bodies(parts.next().unwrap());
+                (None, heads, bodys)
+            };
+            Command::Rule(SyntaxRule { group, heads, bodys })
         }
         Rule::fact => {
             let bodys = parse_bodies(inner.into_inner().next().unwrap());

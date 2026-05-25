@@ -35,6 +35,7 @@ pub enum Command {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Rule {
+    pub group: Option<String>,
     pub heads: Heads,
     pub bodys: Bodys,
 }
@@ -261,7 +262,7 @@ impl Display for Command {
         match self {
             Command::TypeDef(_, def) => write!(f, "{def}"),
             Command::TableDef(_, def) => write!(f, "{def}"),
-            Command::Rule(Rule { heads, bodys }) => {
+            Command::Rule(Rule { heads, bodys, .. }) => {
                 write!(f, "rule ")?;
                 for (idx, head) in heads.iter().enumerate() {
                     if idx != 0 {
