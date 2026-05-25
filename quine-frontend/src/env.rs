@@ -1,30 +1,18 @@
-use alloc::{borrow::ToOwned, boxed::Box, string::String, vec::Vec};
-use alloc::{format, vec};
+use alloc::format;
+use alloc::{string::String, vec::Vec};
 use quine_core::{
     common::Map,
-    types::{BaseType, TableDef, Type, TypeDef},
+    types::{TableDef, TypeDef},
 };
 
 use crate::error::CompileError;
 
 pub type CompileEnv = DataTypeEnv;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct TableEnv {
     pub tables: Vec<TableDef>,
     pub name_map: Map<String, usize>,
-}
-
-impl Default for TableEnv {
-    fn default() -> Self {
-        let mut name_map: Map<String, usize> = Default::default();
-        let tables = vec![TableDef(
-            "Unit".to_owned(),
-            Box::new([Type::Base(BaseType::Id)]),
-        )];
-        name_map.insert("Unit".to_owned(), 0);
-        Self { tables, name_map }
-    }
 }
 
 impl TableEnv {
