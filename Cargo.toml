@@ -4,18 +4,20 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = [
-    "quine-core"
-]
+members = ["quine-core", "quine-frontend"]
 
 [workspace.dependencies]
-rustc-hash = "2.1.2"
 smallvec = "1.15.1"
+rustc-hash = "2.1.2"
+quine-core = { path="./quine-core" }
+quine-frontend = { path="./quine-frontend" }
 
 [dependencies]
-rustc-hash = { workspace = true }
 smallvec = { workspace = true }
-quine-core = { path="./quine-core" }
+rustc-hash = { workspace = true }
+quine-core = { workspace = true }
+quine-frontend = { workspace = true }
+
 
 # rayon = "1.12.0"
 

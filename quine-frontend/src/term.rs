@@ -1,5 +1,10 @@
 use core::fmt::Display;
 
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+
 use crate::syntax::Atom;
 
 #[derive(Debug, Clone, PartialEq)]

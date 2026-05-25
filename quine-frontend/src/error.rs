@@ -1,3 +1,4 @@
+use alloc::{boxed::Box, string::String};
 use quine_core::{common::ColumnIndex, types::Type};
 
 use crate::syntax::Atom;

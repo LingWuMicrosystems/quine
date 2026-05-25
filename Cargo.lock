@@ -501,6 +501,7 @@ dependencies = [
  "pest",
  "pest_derive",
  "quine-core",
+ "quine-frontend",
  "reedline",
  "rustc-hash",
  "smallvec",
@@ -512,6 +513,14 @@ version = "0.1.0"
 dependencies = [
  "rustc-hash",
  "smallvec",
+]
+
+[[package]]
+name = "quine-frontend"
+version = "0.1.0"
+dependencies = [
+ "quine-core",
+ "rustc-hash",
 ]
 
 [[package]]

@@ -58,6 +58,7 @@ pub struct Table {
     pub key_index: Map<Row, RowIndex>,
     pub parents: Map<Value, Vec<RowIndex>>,
     pub row_count: usize,
+    pub delta_start_row: usize,
 }
 
 impl Table {
@@ -68,6 +69,7 @@ impl Table {
             key_index: Default::default(),
             parents: Default::default(),
             row_count: Default::default(),
+            delta_start_row: 0,
         }
     }
 
@@ -83,10 +85,22 @@ impl Table {
         self.row_count
     }
 
+    pub fn reset_delta(&mut self) {
+        self.delta_start_row = self.row_count;
+    }
+
+    pub fn has_delta(&self) -> bool {
+        self.delta_start_row < self.row_count
+    }
+
     pub fn insert(&mut self, uf: &mut UnionFind, mut key: Row, value: Value) {
         debug_assert_eq!(key.0.len(), self.arity());
         if let Some(r) = self.key_index.get(&key) {
             // TODO: Conflict Merge!
+            // Currently assumes the result column is always Id (e-class reference).
+            // For non-Id result types (e.g. i32 from 'function' tables), this
+            // branch needs a user-specified merge function (min, max, first, last, etc.)
+            // instead of uf.union.
             let column = self.column_count();
             let arity = self.arity();
             let value_ref = &mut self.rows[r.0 * column + arity];
@@ -102,8 +116,8 @@ impl Table {
             // insert
             key.0.push(value);
             self.rows.extend(&key.0);
+            self.row_count += 1;
         }
-        self.row_count += 1;
     }
 
     pub fn fused_scan(
@@ -113,6 +127,45 @@ impl Table {
         constraints: &[Constraint],
     ) -> impl Iterator<Item = Row> {
         self.rows
+            .chunks(self.column_count())
+            .map(|row| {
+                let row = row
+                    .iter()
+                    .zip(self.table_def.1.iter())
+                    .map(|(v, ty)| {
+                        if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                            uf.find(*v)
+                        } else {
+                            *v
+                        }
+                    })
+                    .collect();
+                Row(row)
+            })
+            .filter(|row| {
+                constraints.iter().all(|c| match c.op {
+                    Op::Equ => row.0[c.column.0] == c.value,
+                    Op::Neq => row.0[c.column.0] != c.value,
+                    Op::Lt => row.0[c.column.0] < c.value,
+                    Op::Gt => row.0[c.column.0] > c.value,
+                    Op::Leq => row.0[c.column.0] <= c.value,
+                    Op::Geq => row.0[c.column.0] >= c.value,
+                })
+            })
+            .map(|row| {
+                let row = find_columns.iter().map(|c| row.0[c.0]).collect();
+                Row(row)
+            })
+    }
+
+    pub fn fused_scan_delta(
+        &self,
+        uf: &UnionFind,
+        find_columns: &[ColumnIndex],
+        constraints: &[Constraint],
+    ) -> impl Iterator<Item = Row> {
+        let start = self.delta_start_row * self.column_count();
+        self.rows[start..]
             .chunks(self.column_count())
             .map(|row| {
                 let row = row

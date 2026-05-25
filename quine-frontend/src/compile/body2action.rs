@@ -1,3 +1,4 @@
+use alloc::{boxed::Box, string::String, vec::Vec};
 use quine_core::{
     common::*,
     related_egraph::*,
@@ -6,10 +7,10 @@ use quine_core::{
 };
 
 use crate::{
-    engine::NativeSignature,
-    engine::compile::atom_to_value,
-    engine::error::CompileError,
-    engine::interner::Interner,
+    NativeSignature,
+    compile::atom_to_value,
+    error::CompileError,
+    interner::Interner,
     syntax::{AtomOrVariable, Body, Expr, FunctionCall},
 };
 

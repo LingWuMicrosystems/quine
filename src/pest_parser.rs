@@ -2,7 +2,7 @@ use pest::Parser;
 use pest_derive::Parser;
 use quine_core::{rule::Op, types::*};
 
-use crate::syntax::{
+use quine_frontend::syntax::{
     Atom, AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
     Rule as SyntaxRule, Span,
 };
@@ -283,8 +283,7 @@ pub fn parse_repl_commands(input: &str) -> Result<Vec<Command>, String> {
             break;
         }
 
-        let pairs =
-            QuineParser::parse(Rule::command, remaining).map_err(|e| format!("{}", e))?;
+        let pairs = QuineParser::parse(Rule::command, remaining).map_err(|e| format!("{}", e))?;
 
         for pair in pairs {
             let end = pair.as_span().end();

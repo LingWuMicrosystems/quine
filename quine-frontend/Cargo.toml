@@ -1,0 +1,8 @@
+[package]
+name = "quine-frontend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+quine-core = { workspace=true }
+rustc-hash = { workspace=true }
