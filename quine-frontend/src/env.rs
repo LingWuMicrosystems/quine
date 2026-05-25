@@ -21,11 +21,6 @@ impl TableEnv {
         if self.name_map.contains_key(&name) {
             return Err(CompileError::DuplicateTableName(name));
         }
-        // is unit table (only result column, no key columns)
-        if def.1.len() <= 1 {
-            self.name_map.insert(name, 0);
-            return Ok(());
-        }
         self.tables.push(def.clone());
         self.name_map.insert(name, offset);
         Ok(())
