@@ -22,10 +22,10 @@ pub type NativeFn = fn(input: &[Value]) -> Value;
 
 pub type RuleGroup = Set<RuleId>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RunMode {
     Saturate,
-    Times(usize),
+    Repeat(usize),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -139,7 +139,7 @@ impl RelatedEGraph {
             }
 
             iteration += 1;
-            if matches!(mode, RunMode::Times(n) if iteration >= n) {
+            if matches!(mode, RunMode::Repeat(n) if iteration >= n) {
                 return;
             }
         }

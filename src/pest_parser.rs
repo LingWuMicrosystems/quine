@@ -4,8 +4,9 @@ use quine_core::{rule::Op, types::*};
 
 use quine_frontend::syntax::{
     Atom, AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
-    Rule as SyntaxRule, Span,
+    Rule as SyntaxRule, Run as SyntaxRun, RunBody, Span,
 };
+use quine_core::related_egraph::RunMode;
 
 #[derive(Parser)]
 #[grammar = "../docs/grammar.pest"]
@@ -259,24 +260,39 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             Command::Query(heads, vars)
         }
         Rule::run => {
-            let mut parts = inner.into_inner();
-            let mut group = None;
-            let mut repeat = None;
-            while let Some(part) = parts.next() {
-                match part.as_rule() {
-                    Rule::string => {
-                        let s = part.as_str();
-                        group = Some(s[1..s.len() - 1].into());
-                    }
-                    Rule::integer => {
-                        repeat = Some(part.as_str().parse().unwrap_or(0));
-                    }
-                    _ => {}
-                }
-            }
-            Command::Run(group, repeat)
+            let run_item = inner.into_inner().next().unwrap();
+            Command::Run(parse_run_item(run_item))
         }
         _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),
+    }
+}
+
+fn parse_run_item(pair: pest::iterators::Pair<Rule>) -> SyntaxRun {
+    let mut parts = pair.into_inner();
+    let mode = parse_run_mode(parts.next().unwrap());
+    let body = parts.next().map(parse_run_body).unwrap_or(RunBody::All);
+    SyntaxRun(mode, body)
+}
+
+fn parse_run_mode(pair: pest::iterators::Pair<Rule>) -> RunMode {
+    let mut inner = pair.into_inner();
+    match inner.next() {
+        Some(p) if p.as_rule() == Rule::integer => {
+            RunMode::Repeat(p.as_str().parse().unwrap_or(0))
+        }
+        _ => RunMode::Saturate,
+    }
+}
+
+fn parse_run_body(pair: pest::iterators::Pair<Rule>) -> RunBody {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::string => {
+            let s = inner.as_str();
+            RunBody::Group(s[1..s.len() - 1].into())
+        }
+        Rule::run_item => RunBody::Program(Box::new(parse_run_item(inner))),
+        _ => unreachable!(),
     }
 }
 
