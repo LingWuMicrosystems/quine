@@ -61,7 +61,7 @@ impl ActionCtx<'_> {
     fn insert(&mut self, table_id: usize, key: Row, value: Value) {
         let table = &mut self.tables[table_id];
         debug_assert_eq!(key.0.len(), table.arity());
-        if let Some(idx) = table.insert(&mut self.union_find, key, value) {
+        if let Some(idx) = table.insert(self.union_find, key, value) {
             let column_count = table.column_count();
             let start = idx.0 * column_count;
             for i in 0..column_count {
@@ -159,7 +159,7 @@ impl RelatedEGraph {
                         .get(&tid)
                         .into_iter()
                         .flatten()
-                        .filter(|rid| rule_filter.map_or(true, |r| r.contains(rid)))
+                        .filter(|rid| rule_filter.is_none_or(|r| r.contains(rid)))
                         .map(move |rid| (tid, *rid))
                 })
                 .collect::<Set<(TableId, RuleId)>>()
@@ -208,9 +208,11 @@ impl RelatedEGraph {
 
             // New delta = rows added since snapshot,
             // unless rebuild already reset it to 0 for a full re-scan.
-            for tid in 0..self.tables.len() {
+            for (tid, (table, &snapshot)) in
+                self.tables.iter_mut().zip(&snapshots).enumerate()
+            {
                 if !rebuild_affected.contains(&tid) {
-                    self.tables[tid].delta_start_row = snapshots[tid];
+                    table.delta_start_row = snapshot;
                 }
             }
 
@@ -285,7 +287,11 @@ impl RelatedEGraph {
                             &self.union_find,
                             step,
                             delta_table,
-                            &[Constraint { op: Op::Equ, column: col, value: v }],
+                            &[Constraint {
+                                op: Op::Equ,
+                                column: col,
+                                value: v,
+                            }],
                         )
                     })
                     .collect()
@@ -295,8 +301,7 @@ impl RelatedEGraph {
 
             // Hash join on shared variables.
             if shared.is_empty() {
-                let mut new_rows =
-                    Vec::with_capacity(rows.len() * next_rows.len());
+                let mut new_rows = Vec::with_capacity(rows.len() * next_rows.len());
                 for left in &rows {
                     for right in &next_rows {
                         let mut r = left.clone();
