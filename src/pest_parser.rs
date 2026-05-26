@@ -286,13 +286,16 @@ fn parse_run_mode(pair: pest::iterators::Pair<Rule>) -> RunMode {
 }
 
 fn parse_run_body(pair: pest::iterators::Pair<Rule>) -> RunBody {
-    let inner = pair.into_inner().next().unwrap();
-    match inner.as_rule() {
-        Rule::string => {
-            let s = inner.as_str();
+    let inners: Vec<_> = pair.into_inner().collect();
+    match inners.first().map(|p| p.as_rule()) {
+        Some(Rule::string) => {
+            let s = inners[0].as_str();
             RunBody::Group(s[1..s.len() - 1].into())
         }
-        Rule::run_item => RunBody::Program(Box::new(parse_run_item(inner))),
+        Some(Rule::run_item) => {
+            let runs: Box<[SyntaxRun]> = inners.into_iter().map(parse_run_item).collect();
+            RunBody::Program(runs)
+        }
         _ => unreachable!(),
     }
 }

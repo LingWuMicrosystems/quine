@@ -47,7 +47,7 @@ pub struct Run(pub RunMode, pub RunBody);
 pub enum RunBody {
     All,
     Group(GroupName),
-    Program(Box<Run>),
+    Program(Box<[Run]>),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -86,10 +86,26 @@ impl EngineContext {
                 self.regraph.run_semi_naive(rules.as_ref(), run.0)
             }
             RunBody::Program(inner) => {
-                self.apply_run(inner);
-                self.regraph.run_semi_naive(None, run.0)
+                let mut iteration = 0;
+                loop {
+                    if self.apply_run_program(inner) {
+                        return true;
+                    }
+                    iteration += 1;
+                    if let RunMode::Repeat(count) = run.0
+                        && iteration >= count
+                    {
+                        return false;
+                    }
+                }
             }
         }
+    }
+
+    pub fn apply_run_program(&mut self, run_body: &[Run]) -> bool {
+        run_body
+            .iter()
+            .fold(true, |ok, run| self.apply_run(run) && ok)
     }
 
     pub fn query(&mut self, query: &Query, vars: &[String]) -> (VariableRecord, Set<Row>) {

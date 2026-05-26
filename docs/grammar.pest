@@ -22,7 +22,7 @@ run_mode = { "saturate" | ("repeat" ~ integer) }
 
 run_item = { run_mode ~ run_body? }
 
-run_body = { string | "{" ~ run_item ~ "}" }
+run_body = { string | "{" ~ run_item+ ~ "}" }
 
 rule = {
     "rule" ~ string? ~ heads ~ "{" ~ bodies ~ "}"
