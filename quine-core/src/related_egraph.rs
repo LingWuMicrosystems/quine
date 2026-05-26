@@ -68,11 +68,7 @@ impl RelatedEGraph {
     /// iteration limit is reached.
     ///
     /// Returns `true` if fixpoint was reached, `false` if truncated by Repeat.
-    pub fn run_semi_naive(
-        &mut self,
-        rule_filter: Option<&RuleGroup>,
-        mode: RunMode,
-    ) -> bool {
+    pub fn run_semi_naive(&mut self, rule_filter: Option<&RuleGroup>, mode: RunMode) -> bool {
         let mut iteration = 0;
         loop {
             // Collect (driver_table, rule) pairs for tables that have delta rows
@@ -247,26 +243,45 @@ impl RelatedEGraph {
             }
         }
 
+        // Build permutation: VarId -> current column position.
+        // After join, columns are in discovery order, but VarId::resolve
+        // indexes by VarId directly. Reorder so position i = VarId(i).
+        let var_count = result_vars.iter().map(|v| v.0).max().map_or(0, |m| m + 1);
+        let mut var_to_pos: smallvec::SmallVec<[usize; 8]> = (0..var_count).collect();
+        for (pos, var) in result_vars.iter().enumerate() {
+            var_to_pos[var.0] = pos;
+        }
+
         rows.into_iter()
             .filter(|row| {
                 query.constraints.iter().all(|cs| {
-                    let Some(lhs) = row.0.get(cs.lhs.0) else {
+                    let Some(&lhs) = row.0.get(var_to_pos[cs.lhs.0]) else {
                         return true;
                     };
-                    let Some(rhs) = row.0.get(cs.rhs.0) else {
+                    let Some(&rhs) = row.0.get(var_to_pos[cs.rhs.0]) else {
                         return true;
                     };
-                    let ty = query.variables.get_type(cs.lhs.0).unwrap();
-                    check_cross(*lhs, *rhs, cs.op, ty)
+                    check_cross(lhs, rhs, cs.op)
                 })
             })
+            .map(|row| Row(var_to_pos.iter().map(|&p| row.0[p]).collect()))
             .collect()
     }
 
     pub fn insert(&mut self, table_id: usize, key: Row, value: Value) {
         let table = &mut self.tables[table_id];
         debug_assert_eq!(key.0.len(), table.arity());
-        table.insert(&mut self.union_find, key, value);
+        if let Some(idx) = table.insert(&mut self.union_find, key, value) {
+            let column_count = table.column_count();
+            let start = idx.0 * column_count;
+            for i in 0..column_count {
+                let ty = &table.table_def.1[i];
+                if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                    let v = table.rows[start + i];
+                    table.parents.entry(v).or_default().push(idx);
+                }
+            }
+        }
     }
 
     pub fn union(&mut self, old: Value, new: Value) {
@@ -302,10 +317,18 @@ impl RelatedEGraph {
                                     &mut self.tables[tid].rows[existing_idx.0 * column + arity];
                                 let resolved = match merge_fn {
                                     MergeFn::Min => {
-                                        if *new < *old { *new } else { *old }
+                                        if *new < *old {
+                                            *new
+                                        } else {
+                                            *old
+                                        }
                                     }
                                     MergeFn::Max => {
-                                        if *new > *old { *new } else { *old }
+                                        if *new > *old {
+                                            *new
+                                        } else {
+                                            *old
+                                        }
                                     }
                                 };
                                 *value_ref = resolved;
@@ -390,56 +413,14 @@ fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(RowIndex
     Some((*existing, old, new))
 }
 
-fn check_cross(lhs: Value, rhs: Value, op: Op, ty: &Type) -> bool {
-    let base = match ty {
-        Type::Base(b) => b,
-        Type::Name(_) => {
-            return match op {
-                Op::Equ => lhs == rhs,
-                Op::Neq => lhs != rhs,
-                _ => false,
-            };
-        }
-    };
-    match base {
-        BaseType::Id | BaseType::Str => match op {
-            Op::Equ => lhs == rhs,
-            Op::Neq => lhs != rhs,
-            _ => false,
-        },
-        BaseType::I1 => {
-            let l = lhs.0 != 0;
-            let r = rhs.0 != 0;
-            cmp_cross_inner(l, r, op)
-        }
-        BaseType::I8 => cmp_cross_inner(lhs.0 as i8, rhs.0 as i8, op),
-        BaseType::U8 => cmp_cross_inner(lhs.0 as u8, rhs.0 as u8, op),
-        BaseType::I16 => cmp_cross_inner(lhs.0 as i16, rhs.0 as i16, op),
-        BaseType::U16 => cmp_cross_inner(lhs.0 as u16, rhs.0 as u16, op),
-        BaseType::I32 => cmp_cross_inner(lhs.0 as i32, rhs.0 as i32, op),
-        BaseType::U32 => cmp_cross_inner(lhs.0 as u32, rhs.0 as u32, op),
-        BaseType::I64 => cmp_cross_inner(lhs.0 as i64, rhs.0 as i64, op),
-        BaseType::U64 => cmp_cross_inner(lhs.0, rhs.0, op),
-        BaseType::F32 => {
-            let l = f32::from_bits(lhs.0 as u32);
-            let r = f32::from_bits(rhs.0 as u32);
-            cmp_cross_inner(l, r, op)
-        }
-        BaseType::F64 => {
-            let l = f64::from_bits(lhs.0);
-            let r = f64::from_bits(rhs.0);
-            cmp_cross_inner(l, r, op)
-        }
-    }
-}
-
-fn cmp_cross_inner<T: PartialEq + PartialOrd>(l: T, r: T, op: Op) -> bool {
+#[inline]
+fn check_cross(lhs: Value, rhs: Value, op: Op) -> bool {
     match op {
-        Op::Equ => l == r,
-        Op::Neq => l != r,
-        Op::Lt => l < r,
-        Op::Gt => l > r,
-        Op::Leq => l <= r,
-        Op::Geq => l >= r,
+        Op::Equ => lhs.0 == rhs.0,
+        Op::Neq => lhs.0 != rhs.0,
+        Op::Lt => lhs.0 < rhs.0,
+        Op::Gt => lhs.0 > rhs.0,
+        Op::Leq => lhs.0 <= rhs.0,
+        Op::Geq => lhs.0 >= rhs.0,
     }
 }
