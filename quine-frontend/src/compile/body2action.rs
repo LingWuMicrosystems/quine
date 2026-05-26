@@ -9,6 +9,7 @@ use quine_core::{
 use crate::{
     NativeSignature,
     compile::atom_to_value,
+    env::DataTypeEnv,
     error::CompileError,
     interner::Interner,
     syntax::{AtomOrVariable, Body, Expr, FunctionCall},
@@ -16,6 +17,7 @@ use crate::{
 
 pub struct CompileCtx<'a> {
     pub table_map: &'a Map<String, TableId>,
+    pub data_types: &'a DataTypeEnv,
     pub head_variables: &'a VariableRecord,
     pub variables: VariableRecord,
     pub lets: Vec<rule::FunctionCall>,
@@ -88,7 +90,7 @@ pub fn function_call_transform(
                 offset,
                 args,
             },
-            sig.ret.clone(),
+            Type::Base(sig.ret.clone()),
         )
     } else {
         let offset = ctx
@@ -96,16 +98,20 @@ pub fn function_call_transform(
             .get(&call.0)
             .cloned()
             .ok_or_else(|| CompileError::InvalidTableName(call.0.clone()))?;
+        let ret_ty = ctx
+            .data_types
+            .get_constructor_type(&call.0)
+            .map_or(Type::Base(BaseType::Id), Type::Name);
         (
             rule::FunctionCall {
                 is_native: false,
                 offset,
                 args,
             },
-            BaseType::Id,
+            ret_ty,
         )
     };
-    let r = ctx.variables.insert_var(None, Type::Base(ret_ty));
+    let r = ctx.variables.insert_var(None, ret_ty);
     ctx.lets.push(f);
     Ok(r)
 }

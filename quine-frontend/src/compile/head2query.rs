@@ -6,7 +6,7 @@ use crate::{
     syntax::{AtomOrVariable, ConstructorPattern, Head, Pattern},
 };
 
-use alloc::{format, vec::Vec};
+use alloc::vec::Vec;
 use quine_core::{common::*, rule::*, types::*};
 
 struct QueryCtx<'a> {
@@ -134,7 +134,10 @@ pub fn heads2query(
                     .insert((Op::Equ, atom_to_value(a.clone(), ctx.interner)));
             }
             Head::LetEq(_, pattern, pattern1) => {
-                let defined_type = Type::Base(BaseType::Id);
+                // Infer type from constructor pattern, fall back to Id
+                let defined_type = infer_data_type(pattern, data_types)
+                    .or_else(|| infer_data_type(pattern1, data_types))
+                    .unwrap_or(Type::Base(BaseType::Id));
                 let Some(lhs) = check_and_compile_pattern(&mut ctx, pattern, &defined_type, None)?
                 else {
                     continue;
@@ -230,6 +233,15 @@ fn check_and_compile_con_pattern(
     }
 }
 
+fn infer_data_type(pattern: &Pattern, data_types: &DataTypeEnv) -> Option<Type> {
+    match pattern {
+        Pattern::Constructor(_, cp) => data_types
+            .get_constructor_type(&cp.name)
+            .map(Type::Name),
+        _ => None,
+    }
+}
+
 fn check_and_compile_pattern(
     ctx: &mut QueryCtx,
     pattern: &Pattern,
@@ -274,21 +286,16 @@ fn check_and_compile_pattern(
             }
         }
         Pattern::Constructor(_, constructor_pattern) => {
-            let Type::Name(expected_name) = defined_type else {
-                return Err(CompileError::TypeCheckError(
-                    defined_type.clone(),
-                    Type::Name(constructor_pattern.name.clone()),
-                ));
-            };
-            let cons_name = format!("{}.{}", expected_name, constructor_pattern.name);
-            let cons_type = ctx
+            // constructor_pattern.name is already fully qualified (e.g. "Expr.Add")
+            let actual_type = ctx
                 .data_types
-                .get_constructor_type(&cons_name)
+                .get_constructor_type(&constructor_pattern.name)
                 .ok_or_else(|| CompileError::InvalidTableName(constructor_pattern.name.clone()))?;
-            if cons_type != *expected_name {
+            let expected = Type::Name(actual_type);
+            if &expected != defined_type {
                 return Err(CompileError::TypeCheckError(
-                    Type::Name(expected_name.clone()),
-                    Type::Name(cons_type.clone()),
+                    expected,
+                    defined_type.clone(),
                 ));
             }
             let res = check_and_compile_con_pattern(ctx, constructor_pattern, true)?;
