@@ -7,6 +7,7 @@ use quine_frontend::syntax::Command;
 use quine_frontend::EngineContext;
 
 use quine::pest_parser::{parse_file, parse_repl_commands};
+use quine_frontend::prelude::register_prelude;
 
 use quine_core::common::Set;
 use quine_core::rule::VariableRecord;
@@ -56,6 +57,7 @@ fn get_history_path() -> PathBuf {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut ctx = EngineContext::default();
+    register_prelude(&mut ctx);
 
     if args.len() == 1 {
         run_repl(&mut ctx);

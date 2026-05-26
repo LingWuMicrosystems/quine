@@ -17,4 +17,6 @@ pub enum CompileError {
     TypeCheckError(Type, Type),
     InvalidTableWidth(usize, usize),
     InvalidExpression,
+    MergeOnNonNumeric(String),
+    MergeRequired(String),
 }

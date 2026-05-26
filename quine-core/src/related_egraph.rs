@@ -10,7 +10,7 @@ use crate::{
     common::{ColumnIndex, Map, RowIndex, Set, Value, VarId},
     rule::{Action, ActionTail, FunctionCall, Op, Query, Rule},
     table::{Row, Table},
-    types::{BaseType, TableDef, Type},
+    types::{BaseType, MergeFn, TableDef, Type},
     uf::UnionFind,
 };
 
@@ -290,14 +290,33 @@ impl RelatedEGraph {
                     .collect();
 
                 if !pairs.is_empty() {
-                    // Rebuild changed equivalence classes for this table.
-                    // Reset delta to force a full re-scan next iteration.
                     self.tables[tid].delta_start_row = 0;
                     affected.insert(tid);
-                    let new_pairs: Vec<_> = pairs
-                        .into_iter()
-                        .flat_map(|(old, new)| self.union_find.union(old, new))
-                        .collect();
+                    let merge = self.tables[tid].table_def.2;
+                    let new_pairs: Vec<_> = match merge {
+                        Some(merge_fn) => {
+                            for (existing_idx, old, new) in &pairs {
+                                let column = self.tables[tid].column_count();
+                                let arity = self.tables[tid].arity();
+                                let value_ref =
+                                    &mut self.tables[tid].rows[existing_idx.0 * column + arity];
+                                let resolved = match merge_fn {
+                                    MergeFn::Min => {
+                                        if *new < *old { *new } else { *old }
+                                    }
+                                    MergeFn::Max => {
+                                        if *new > *old { *new } else { *old }
+                                    }
+                                };
+                                *value_ref = resolved;
+                            }
+                            Vec::new()
+                        }
+                        None => pairs
+                            .into_iter()
+                            .flat_map(|(_, old, new)| self.union_find.union(old, new))
+                            .collect(),
+                    };
                     self.pending_unions.extend(new_pairs);
                 }
             }
@@ -344,7 +363,7 @@ impl RelatedEGraph {
     }
 }
 
-fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(Value, Value)> {
+fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(RowIndex, Value, Value)> {
     let row = table.get_all_row(idx);
     let canonical: Vec<Value> = row
         .0
@@ -368,7 +387,7 @@ fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(Value, V
     }
     let old = table.get_all_row(*existing).0[arity];
     let new = canonical[arity];
-    Some((old, new))
+    Some((*existing, old, new))
 }
 
 fn check_cross(lhs: Value, rhs: Value, op: Op, ty: &Type) -> bool {

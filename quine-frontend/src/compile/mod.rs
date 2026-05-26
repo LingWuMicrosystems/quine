@@ -39,7 +39,7 @@ pub fn compile_command(
                 let table_name = format!("{}.{}", name, cons.0);
                 let mut cols: Vec<Type> = cons.1.to_vec();
                 cols.push(Type::Name(name.clone()));
-                let table_def = TableDef(table_name.clone(), cols.into());
+                let table_def = TableDef(table_name.clone(), cols.into(), None);
                 table_types.insert(table_name, table_def.clone())?;
                 table_defs.push(table_def);
             }
@@ -49,6 +49,16 @@ pub fn compile_command(
         Command::TableDef(name, table_def) => {
             for ty in table_def.1.iter() {
                 check_type_defined(ty, data_types)?;
+            }
+            let result_ty = &table_def.1[table_def.1.len() - 1];
+            let needs_merge = !matches!(result_ty, Type::Name(_) | Type::Base(BaseType::Id));
+            match (&table_def.2, needs_merge) {
+                (Some(_), true) => match result_ty {
+                    Type::Base(bt) if bt.is_numeric() => {}
+                    _ => return Err(CompileError::MergeOnNonNumeric(name.clone())),
+                },
+                (None, true) => return Err(CompileError::MergeRequired(name.clone())),
+                _ => {}
             }
             table_types.insert(name.clone(), table_def.clone())?;
             Ok(CompiledUnit::TableDefs([table_def.clone()].into()))
