@@ -18,4 +18,5 @@ pub enum CompileError {
     InvalidTableWidth(usize, usize),
     InvalidExpression,
     MergeOnNonNumeric(String),
+    MergeRequired(String),
 }

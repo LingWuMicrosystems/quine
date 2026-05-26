@@ -50,12 +50,15 @@ pub fn compile_command(
             for ty in table_def.1.iter() {
                 check_type_defined(ty, data_types)?;
             }
-            if let Some(_merge) = &table_def.2 {
-                let result_ty = &table_def.1[table_def.1.len() - 1];
-                match result_ty {
+            let result_ty = &table_def.1[table_def.1.len() - 1];
+            let needs_merge = !matches!(result_ty, Type::Name(_) | Type::Base(BaseType::Id));
+            match (&table_def.2, needs_merge) {
+                (Some(_), true) => match result_ty {
                     Type::Base(bt) if bt.is_numeric() => {}
                     _ => return Err(CompileError::MergeOnNonNumeric(name.clone())),
-                }
+                },
+                (None, true) => return Err(CompileError::MergeRequired(name.clone())),
+                _ => {}
             }
             table_types.insert(name.clone(), table_def.clone())?;
             Ok(CompiledUnit::TableDefs([table_def.clone()].into()))
