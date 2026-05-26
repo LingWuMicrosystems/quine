@@ -88,15 +88,15 @@ impl EngineContext {
             RunBody::Program(inner) => {
                 let mut iteration = 0;
                 loop {
-                    if self.apply_run_program(inner) {
-                        return true;
-                    }
-                    iteration += 1;
                     if let RunMode::Repeat(count) = run.0
                         && iteration >= count
                     {
                         return false;
                     }
+                    if self.apply_run_program(inner) {
+                        return true;
+                    }
+                    iteration += 1;
                 }
             }
         }

@@ -134,10 +134,16 @@ pub fn heads2query(
                     .insert((Op::Equ, atom_to_value(a.clone(), ctx.interner)));
             }
             Head::LetEq(_, pattern, pattern1) => {
-                // Infer type from constructor pattern, fall back to Id
-                let defined_type = infer_data_type(pattern, data_types)
-                    .or_else(|| infer_data_type(pattern1, data_types))
-                    .unwrap_or(Type::Base(BaseType::Id));
+                let t1 = infer_data_type(pattern, &ctx);
+                let t2 = infer_data_type(pattern1, &ctx);
+                let defined_type = match (t1, t2) {
+                    (Some(a), Some(b)) => {
+                        crate::compile::unify(&a, &b)?;
+                        a
+                    }
+                    (Some(t), None) | (None, Some(t)) => t,
+                    (None, None) => Type::Base(BaseType::Id),
+                };
                 let Some(lhs) = check_and_compile_pattern(&mut ctx, pattern, &defined_type, None)?
                 else {
                     continue;
@@ -221,7 +227,11 @@ fn check_and_compile_con_pattern(
 
     if get_result {
         let result_col = ColumnIndex(arity);
-        let result_ty = table.1.last().cloned().unwrap_or(Type::Base(BaseType::Id));
+        let result_ty = ctx
+            .data_types
+            .get_constructor_type(&constructor_pattern.name)
+            .map(Type::Name)
+            .unwrap_or(Type::Base(BaseType::Id));
         let res = ctx.variables.insert_var(None, result_ty);
         ctx.scan_steps[step_idx].columns.push((result_col, res));
         ctx.var_to_steps.entry(res).or_default().push(step_idx);
@@ -233,11 +243,18 @@ fn check_and_compile_con_pattern(
     }
 }
 
-fn infer_data_type(pattern: &Pattern, data_types: &DataTypeEnv) -> Option<Type> {
+fn infer_data_type(pattern: &Pattern, ctx: &QueryCtx) -> Option<Type> {
     match pattern {
-        Pattern::Constructor(_, cp) => data_types
+        Pattern::Constructor(_, cp) => ctx
+            .data_types
             .get_constructor_type(&cp.name)
             .map(Type::Name),
+        Pattern::Variable(_, name) => ctx
+            .variables
+            .get_offset(name)
+            .and_then(|o| ctx.variables.get_type(o))
+            .cloned(),
+        Pattern::Atom(_, a) => Some(Type::Base(a.get_type())),
         _ => None,
     }
 }

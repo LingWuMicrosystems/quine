@@ -16,6 +16,14 @@ use crate::interner::Interner;
 use crate::syntax::{self, Atom, Bodys, Command};
 use crate::{CompiledUnit, NativeSignature};
 
+pub fn unify(t1: &Type, t2: &Type) -> Result<(), CompileError> {
+    if t1 == t2 {
+        Ok(())
+    } else {
+        Err(CompileError::TypeCheckError(t1.clone(), t2.clone()))
+    }
+}
+
 pub fn compile_command(
     cmd: &Command,
     data_types: &mut CompileEnv,
@@ -30,7 +38,7 @@ pub fn compile_command(
             for cons in &type_def.1.0 {
                 let table_name = format!("{}.{}", name, cons.0);
                 let mut cols: Vec<Type> = cons.1.to_vec();
-                cols.push(Type::Base(BaseType::Id));
+                cols.push(Type::Name(name.clone()));
                 let table_def = TableDef(table_name.clone(), cols.into());
                 table_types.insert(table_name, table_def.clone())?;
                 table_defs.push(table_def);
@@ -80,6 +88,7 @@ pub fn compile_fact(
 ) -> Result<Action, CompileError> {
     let mut ctx = CompileCtx {
         table_map: &table_types.name_map,
+        table_defs: &table_types.tables,
         data_types,
         head_variables: &VariableRecord::default(),
         variables: VariableRecord::default(),
@@ -111,6 +120,7 @@ fn compile_rule(
     let query = heads2query(&rule.heads, table_types, data_types, interner)?;
     let mut ctx = CompileCtx {
         table_map: &table_types.name_map,
+        table_defs: &table_types.tables,
         data_types,
         head_variables: &query.variables,
         variables: VariableRecord::default(),
