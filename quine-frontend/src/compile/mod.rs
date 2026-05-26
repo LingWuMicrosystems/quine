@@ -4,7 +4,7 @@ pub mod head2query;
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::{format, vec};
-use quine_core::rule::VariableRecord;
+use quine_core::rule::{Action, VariableRecord};
 use quine_core::types::*;
 use quine_core::{common::*, rule};
 
@@ -16,97 +16,88 @@ use crate::interner::Interner;
 use crate::syntax::{self, Atom, Bodys, Command};
 use crate::{CompiledUnit, NativeSignature};
 
-pub struct Compiler;
-
-impl Compiler {
-    pub fn compile_command(
-        cmd: &Command,
-        data_types: &mut CompileEnv,
-        table_types: &mut TableEnv,
-        interner: &mut Interner,
-        native_names: &Map<String, usize>,
-        native_signatures: &Map<String, NativeSignature>,
-    ) -> Result<CompiledUnit, CompileError> {
-        match cmd {
-            Command::TypeDef(name, type_def) => {
-                let mut table_defs = vec![];
-                for cons in &type_def.1.0 {
-                    let table_name = format!("{}.{}", name, cons.0);
-                    let mut cols: Vec<Type> = cons.1.to_vec();
-                    cols.push(Type::Base(BaseType::Id));
-                    let table_def = TableDef(table_name.clone(), cols.into());
-                    table_types.insert(table_name, table_def.clone())?;
-                    table_defs.push(table_def);
-                }
-                data_types.insert(name.clone(), type_def.clone())?;
-                Ok(CompiledUnit {
-                    table_defs,
-                    rules: vec![],
-                    actions: vec![],
-                })
-            }
-            Command::TableDef(name, table_def) => {
-                for ty in table_def.1.iter() {
-                    check_type_defined(ty, data_types)?;
-                }
-                table_types.insert(name.clone(), table_def.clone())?;
-                Ok(CompiledUnit {
-                    table_defs: vec![table_def.clone()],
-                    rules: vec![],
-                    actions: vec![],
-                })
-            }
-            Command::Rule(rule) => {
-                let compiled = compile_rule(
-                    rule,
-                    table_types,
-                    data_types,
-                    interner,
-                    native_names,
-                    native_signatures,
-                )?;
-                Ok(CompiledUnit {
-                    table_defs: vec![],
-                    rules: vec![(rule.group.clone(), compiled)],
-                    actions: vec![],
-                })
-            }
-            Command::Fact(fact) => {
-                Self::compile_fact(fact, table_types, data_types, interner, native_names, native_signatures)
-            }
-            Command::Query(..) | Command::Run(..) => Ok(CompiledUnit {
-                table_defs: vec![],
-                rules: vec![],
-                actions: vec![],
-            }),
-        }
+pub fn unify(t1: &Type, t2: &Type) -> Result<(), CompileError> {
+    if t1 == t2 {
+        Ok(())
+    } else {
+        Err(CompileError::TypeCheckError(t1.clone(), t2.clone()))
     }
+}
 
-    pub fn compile_fact(
-        fact: &Bodys,
-        table_types: &TableEnv,
-        data_types: &CompileEnv,
-        interner: &mut Interner,
-        native_names: &Map<String, usize>,
-        native_signatures: &Map<String, NativeSignature>,
-    ) -> Result<CompiledUnit, CompileError> {
-        let mut ctx = CompileCtx {
-            table_map: &table_types.name_map,
+pub fn compile_command(
+    cmd: &Command,
+    data_types: &mut CompileEnv,
+    table_types: &mut TableEnv,
+    interner: &mut Interner,
+    native_names: &Map<String, usize>,
+    native_signatures: &Map<String, NativeSignature>,
+) -> Result<CompiledUnit, CompileError> {
+    match cmd {
+        Command::TypeDef(name, type_def) => {
+            let mut table_defs = vec![];
+            for cons in &type_def.1.0 {
+                let table_name = format!("{}.{}", name, cons.0);
+                let mut cols: Vec<Type> = cons.1.to_vec();
+                cols.push(Type::Name(name.clone()));
+                let table_def = TableDef(table_name.clone(), cols.into());
+                table_types.insert(table_name, table_def.clone())?;
+                table_defs.push(table_def);
+            }
+            data_types.insert(name.clone(), type_def.clone())?;
+            Ok(CompiledUnit::TableDefs(table_defs.into()))
+        }
+        Command::TableDef(name, table_def) => {
+            for ty in table_def.1.iter() {
+                check_type_defined(ty, data_types)?;
+            }
+            table_types.insert(name.clone(), table_def.clone())?;
+            Ok(CompiledUnit::TableDefs([table_def.clone()].into()))
+        }
+        Command::Rule(rule) => {
+            let compiled = compile_rule(
+                rule,
+                table_types,
+                data_types,
+                interner,
+                native_names,
+                native_signatures,
+            )?;
+            Ok(CompiledUnit::Rule(rule.group.clone(), compiled))
+        }
+        Command::Fact(fact) => compile_fact(
+            fact,
+            table_types,
             data_types,
-            head_variables: &VariableRecord::default(),
-            variables: VariableRecord::default(),
-            lets: Vec::new(),
             interner,
             native_names,
             native_signatures,
-        };
-        let action = bodys2action(&mut ctx, fact)?;
-        Ok(CompiledUnit {
-            table_defs: vec![],
-            rules: vec![],
-            actions: vec![action],
-        })
+        )
+        .map(CompiledUnit::Action),
+        Command::Query(_, _) => unreachable!(),
+        Command::Run(run) => Ok(CompiledUnit::Run(run.clone())),
     }
+}
+
+pub fn compile_fact(
+    fact: &Bodys,
+    table_types: &TableEnv,
+    data_types: &CompileEnv,
+    interner: &mut Interner,
+    native_names: &Map<String, usize>,
+    native_signatures: &Map<String, NativeSignature>,
+) -> Result<Action, CompileError> {
+    let mut ctx = CompileCtx {
+        table_map: &table_types.name_map,
+        table_defs: &table_types.tables,
+        data_types,
+        head_variables: &VariableRecord::default(),
+        variables: VariableRecord::default(),
+        lets: Vec::new(),
+        interner,
+        native_names,
+        native_signatures,
+    };
+    bodys2action(&mut ctx, fact)
 }
 
 fn check_type_defined(ty: &Type, data_types: &CompileEnv) -> Result<(), CompileError> {
@@ -129,6 +120,7 @@ fn compile_rule(
     let query = heads2query(&rule.heads, table_types, data_types, interner)?;
     let mut ctx = CompileCtx {
         table_map: &table_types.name_map,
+        table_defs: &table_types.tables,
         data_types,
         head_variables: &query.variables,
         variables: VariableRecord::default(),

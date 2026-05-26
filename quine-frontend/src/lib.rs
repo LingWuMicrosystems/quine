@@ -16,7 +16,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use quine_core::common::{Map, Set, Value};
-use quine_core::related_egraph::{NativeFn, RelatedEGraph, RunMode};
+use quine_core::related_egraph::{GroupName, NativeFn, RelatedEGraph, RunMode};
 use quine_core::rule::{self, Query, VariableRecord};
 use quine_core::table::Row;
 use quine_core::types::*;
@@ -32,11 +32,22 @@ pub struct NativeSignature {
     pub ret: BaseType,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct CompiledUnit {
-    pub table_defs: Vec<TableDef>,
-    pub rules: Vec<(Option<String>, rule::Rule)>,
-    pub actions: Vec<rule::Action>,
+#[derive(Debug, Clone)]
+pub enum CompiledUnit {
+    TableDefs(Box<[TableDef]>),
+    Rule(Option<String>, rule::Rule),
+    Action(rule::Action),
+    Run(Run),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Run(pub RunMode, pub RunBody);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RunBody {
+    All,
+    Group(GroupName),
+    Program(Box<[Run]>),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -51,19 +62,53 @@ pub struct EngineContext {
 
 impl EngineContext {
     pub fn apply(&mut self, unit: CompiledUnit) {
-        for table_def in unit.table_defs {
-            self.regraph.add_table(table_def);
-        }
-        for (group, rule) in unit.rules {
-            self.regraph.add_rule(group, rule);
-        }
-        for action in unit.actions {
-            self.regraph
-                .apply_action(&action, Set::from_iter([Row::default()]));
+        match unit {
+            CompiledUnit::TableDefs(table_defs) => {
+                for table_def in table_defs {
+                    self.regraph.add_table(table_def);
+                }
+            }
+            CompiledUnit::Rule(group_name, rule) => self.regraph.add_rule(group_name, rule),
+            CompiledUnit::Action(action) => self
+                .regraph
+                .apply_action(&action, Set::from_iter([Row::default()])),
+            CompiledUnit::Run(run) => {
+                self.apply_run(&run);
+            }
         }
     }
 
-    pub fn run_query(&mut self, query: &Query, vars: &[String]) -> (VariableRecord, Set<Row>) {
+    pub fn apply_run(&mut self, run: &Run) -> bool {
+        match &run.1 {
+            RunBody::All => self.regraph.run_semi_naive(None, run.0),
+            RunBody::Group(name) => {
+                let rules = self.regraph.rule_groups.get(name).cloned();
+                self.regraph.run_semi_naive(rules.as_ref(), run.0)
+            }
+            RunBody::Program(inner) => {
+                let mut iteration = 0;
+                loop {
+                    if let RunMode::Repeat(count) = run.0
+                        && iteration >= count
+                    {
+                        return false;
+                    }
+                    if self.apply_run_program(inner) {
+                        return true;
+                    }
+                    iteration += 1;
+                }
+            }
+        }
+    }
+
+    pub fn apply_run_program(&mut self, run_body: &[Run]) -> bool {
+        run_body
+            .iter()
+            .fold(true, |ok, run| self.apply_run(run) && ok)
+    }
+
+    pub fn query(&mut self, query: &Query, vars: &[String]) -> (VariableRecord, Set<Row>) {
         let mut result = self.regraph.run_query(query, None);
         if vars.is_empty() {
             return (query.variables.clone(), result);
@@ -83,18 +128,6 @@ impl EngineContext {
             .map(|row| Row(offsets.iter().map(|&o| *row.0.get(o).unwrap()).collect()))
             .collect();
         (proj_record, result)
-    }
-
-    pub fn run(&mut self) {
-        self.regraph.run();
-    }
-
-    pub fn run_all(&mut self, mode: RunMode) {
-        self.regraph.run_all(mode);
-    }
-
-    pub fn run_group(&mut self, group_name: &str, mode: RunMode) {
-        self.regraph.run_group(group_name, mode);
     }
 
     pub fn register_native(

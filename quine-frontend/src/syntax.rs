@@ -7,10 +7,11 @@ use alloc::{
 };
 use quine_core::{
     common::Set,
-    related_egraph::{GroupName, RunMode},
     rule::Op,
     types::{BaseType, TableDef, TypeDef},
 };
+
+use crate::Run;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
@@ -32,16 +33,6 @@ pub enum Command {
     Fact(Bodys),
     Query(Heads, Vec<String>),
     Run(Run),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Run(pub RunMode, pub RunBody);
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum RunBody {
-    All,
-    Group(GroupName),
-    Program(Box<Run>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

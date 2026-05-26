@@ -39,7 +39,7 @@ pub struct RelatedEGraph {
 
     ruleset: Vec<Rule>,
     rule_deps: Map<TableId, Vec<RuleId>>,
-    rule_groups: Map<GroupName, RuleGroup>,
+    pub rule_groups: Map<GroupName, RuleGroup>,
 }
 
 impl RelatedEGraph {
@@ -61,27 +61,21 @@ impl RelatedEGraph {
         }
     }
 
-    /// Run all rules to fixpoint (backward compat).
-    pub fn run(&mut self) {
-        self.run_all(RunMode::Saturate);
-    }
-
-    /// Run all rules with the given mode.
-    pub fn run_all(&mut self, mode: RunMode) {
-        self.run_semi_naive(None, mode);
-    }
-
-    /// Run rules in the named group with the given mode.
-    pub fn run_group(&mut self, group_name: &str, mode: RunMode) {
-        if let Some(rules) = self.rule_groups.get(group_name).cloned() {
-            self.run_semi_naive(Some(&rules), mode);
-        }
-    }
-
-    fn run_semi_naive(&mut self, rule_filter: Option<&RuleGroup>, mode: RunMode) {
+    /// Semi-naive fixpoint iteration.
+    ///
+    /// Repeatedly fires rules in `rule_filter` (all rules if `None`)
+    /// until no table has delta rows (fixpoint), or until `Repeat(n)`
+    /// iteration limit is reached.
+    ///
+    /// Returns `true` if fixpoint was reached, `false` if truncated by Repeat.
+    pub fn run_semi_naive(
+        &mut self,
+        rule_filter: Option<&RuleGroup>,
+        mode: RunMode,
+    ) -> bool {
         let mut iteration = 0;
         loop {
-            // Collect (driver_table, rule) pairs, optionally filtered by group
+            // Collect (driver_table, rule) pairs for tables that have delta rows
             let pairs: Vec<(TableId, RuleId)> = (0..self.tables.len())
                 .filter(|tid| self.tables[*tid].has_delta())
                 .flat_map(|tid| {
@@ -97,7 +91,7 @@ impl RelatedEGraph {
                 .collect();
 
             if pairs.is_empty() {
-                return;
+                return true;
             }
 
             // Snapshot current row counts so new delta only includes rows added this round
@@ -140,7 +134,7 @@ impl RelatedEGraph {
 
             iteration += 1;
             if matches!(mode, RunMode::Repeat(n) if iteration >= n) {
-                return;
+                return false;
             }
         }
     }
