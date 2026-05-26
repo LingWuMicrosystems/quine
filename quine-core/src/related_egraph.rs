@@ -291,7 +291,7 @@ impl RelatedEGraph {
     }
 
     pub fn rebuild(&mut self) -> Set<TableId> {
-        let mut affected = Set::default();
+        let mut affected: Map<TableId, usize> = Map::default();
         while let Some((_parent, child)) = self.pending_unions.pop() {
             for tid in 0..self.tables.len() {
                 let table = &self.tables[tid];
@@ -305,8 +305,17 @@ impl RelatedEGraph {
                     .collect();
 
                 if !pairs.is_empty() {
-                    self.tables[tid].delta_start_row = 0;
-                    affected.insert(tid);
+                    // Track minimum affected row index so we only
+                    // rescan from that point, not the whole table.
+                    let min_idx = indices
+                        .iter()
+                        .map(|i| i.0)
+                        .chain(pairs.iter().map(|(i, _, _)| i.0))
+                        .min()
+                        .unwrap_or(0);
+                    let entry = affected.entry(tid).or_insert(usize::MAX);
+                    *entry = (*entry).min(min_idx);
+
                     let merge = self.tables[tid].table_def.2;
                     let new_pairs: Vec<_> = match merge {
                         Some(merge_fn) => {
@@ -344,7 +353,11 @@ impl RelatedEGraph {
                 }
             }
         }
-        affected
+        for (tid, min_idx) in &affected {
+            let table = &mut self.tables[*tid];
+            table.delta_start_row = table.delta_start_row.min(*min_idx);
+        }
+        affected.into_keys().collect()
     }
 
     pub fn register_native_fn(&mut self, func: NativeFn) -> usize {
