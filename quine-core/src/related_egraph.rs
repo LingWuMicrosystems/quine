@@ -1,14 +1,14 @@
 /// related e-graph
 use alloc::string::String;
 use alloc::vec::Vec;
-use smallvec::ToSmallVec;
+use smallvec::{SmallVec, ToSmallVec};
 
 #[cfg(feature = "std")]
 use rayon::prelude::*;
 
 use crate::{
     common::{ColumnIndex, Map, RowIndex, Set, Value, VarId},
-    rule::{Action, ActionTail, FunctionCall, Op, Query, Rule},
+    rule::{Action, ActionTail, Constraint, FunctionCall, Op, Query, Rule, ScanStep},
     table::{Row, Table},
     types::{BaseType, MergeFn, TableDef, Type},
     uf::UnionFind,
@@ -232,33 +232,27 @@ impl RelatedEGraph {
     }
 
     pub fn run_query(&self, query: &Query, delta_table: Option<TableId>) -> Set<Row> {
-        let step_results: Vec<Vec<Row>> = query
-            .scan_steps
-            .iter()
-            .map(|step| {
-                let table = &self.tables[step.table];
-                let col_indices: Vec<ColumnIndex> = step.columns.iter().map(|(c, _)| *c).collect();
-                let use_delta = delta_table == Some(step.table) && table.has_delta();
-                table
-                    .fused_scan(&self.union_find, &col_indices, &step.constraints, use_delta)
-                    .collect()
-            })
-            .collect();
-
-        if step_results.is_empty() {
+        if query.scan_steps.is_empty() {
             return Set::default();
         }
 
-        let mut rows: Vec<Row> = step_results[0].clone();
+        // Step 0: initial scan.
+        let mut rows: Vec<Row> = scan_table(
+            &self.tables,
+            &self.union_find,
+            &query.scan_steps[0],
+            delta_table,
+            &[],
+        );
+
         let mut result_vars: Vec<VarId> = query.scan_steps[0]
             .columns
             .iter()
             .map(|(_, v)| *v)
             .collect();
 
-        for (step_idx, next_rows) in step_results.iter().enumerate().skip(1) {
-            let step = &query.scan_steps[step_idx];
-
+        // Subsequent steps: sideways information passing + hash join.
+        for step in &query.scan_steps[1..] {
             let shared: Vec<(usize, usize)> = step
                 .columns
                 .iter()
@@ -268,30 +262,74 @@ impl RelatedEGraph {
                 })
                 .collect();
 
+            let result_vars_set: Set<VarId> = result_vars.iter().copied().collect();
             let new_cols: Vec<usize> = step
                 .columns
                 .iter()
                 .enumerate()
-                .filter(|(_, (_, v))| !result_vars.contains(v))
+                .filter(|(_, (_, v))| !result_vars_set.contains(v))
                 .map(|(i, _)| i)
                 .collect();
 
-            rows = rows
-                .into_iter()
-                .flat_map(|left| {
-                    next_rows
-                        .iter()
-                        .filter(|right| shared.iter().all(|(sp, rp)| right.0[*sp] == left.0[*rp]))
-                        .map(|right| {
+            // Scan with pushed-down constraints when a single shared
+            // variable allows sideways information passing.
+            let next_rows: Vec<Row> = if shared.len() == 1 {
+                let (sp, rp) = shared[0];
+                let distinct: Set<Value> = rows.iter().map(|r| r.0[rp]).collect();
+                let col = step.columns[sp].0;
+                distinct
+                    .iter()
+                    .flat_map(|&v| {
+                        scan_table(
+                            &self.tables,
+                            &self.union_find,
+                            step,
+                            delta_table,
+                            &[Constraint { op: Op::Equ, column: col, value: v }],
+                        )
+                    })
+                    .collect()
+            } else {
+                scan_table(&self.tables, &self.union_find, step, delta_table, &[])
+            };
+
+            // Hash join on shared variables.
+            if shared.is_empty() {
+                let mut new_rows =
+                    Vec::with_capacity(rows.len() * next_rows.len());
+                for left in &rows {
+                    for right in &next_rows {
+                        let mut r = left.clone();
+                        for &si in &new_cols {
+                            r.0.push(right.0[si]);
+                        }
+                        new_rows.push(r);
+                    }
+                }
+                rows = new_rows;
+            } else {
+                let mut hash: Map<SmallVec<[Value; 4]>, Vec<&Row>> = Map::default();
+                for right in &next_rows {
+                    let key: SmallVec<[Value; 4]> =
+                        shared.iter().map(|(sp, _)| right.0[*sp]).collect();
+                    hash.entry(key).or_default().push(right);
+                }
+                let mut new_rows = Vec::with_capacity(rows.len());
+                for left in &rows {
+                    let key: SmallVec<[Value; 4]> =
+                        shared.iter().map(|(_, rp)| left.0[*rp]).collect();
+                    if let Some(matches) = hash.get(&key) {
+                        for right in matches {
                             let mut r = left.clone();
                             for &si in &new_cols {
                                 r.0.push(right.0[si]);
                             }
-                            r
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect();
+                            new_rows.push(r);
+                        }
+                    }
+                }
+                rows = new_rows;
+            }
 
             for &si in &new_cols {
                 result_vars.push(step.columns[si].1);
@@ -302,7 +340,7 @@ impl RelatedEGraph {
         // After join, columns are in discovery order, but VarId::resolve
         // indexes by VarId directly. Reorder so position i = VarId(i).
         let var_count = result_vars.iter().map(|v| v.0).max().map_or(0, |m| m + 1);
-        let mut var_to_pos: smallvec::SmallVec<[usize; 8]> = (0..var_count).collect();
+        let mut var_to_pos: SmallVec<[usize; 8]> = (0..var_count).collect();
         for (pos, var) in result_vars.iter().enumerate() {
             var_to_pos[var.0] = pos;
         }
@@ -446,6 +484,23 @@ impl RelatedEGraph {
     pub fn get_table(&self, tid: TableId) -> &Table {
         &self.tables[tid]
     }
+}
+
+fn scan_table(
+    tables: &[Table],
+    uf: &UnionFind,
+    step: &ScanStep,
+    delta_table: Option<TableId>,
+    extra_constraints: &[Constraint],
+) -> Vec<Row> {
+    let table = &tables[step.table];
+    let col_indices: Vec<ColumnIndex> = step.columns.iter().map(|(c, _)| *c).collect();
+    let use_delta = delta_table == Some(step.table) && table.has_delta();
+    let mut constraints = step.constraints.clone();
+    constraints.extend_from_slice(extra_constraints);
+    table
+        .fused_scan(uf, &col_indices, &constraints, use_delta)
+        .collect()
 }
 
 fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(RowIndex, Value, Value)> {
