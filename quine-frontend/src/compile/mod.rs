@@ -72,7 +72,7 @@ impl Compiler {
                 })
             }
             Command::Fact(fact) => {
-                Self::compile_fact(fact, table_types, interner, native_names, native_signatures)
+                Self::compile_fact(fact, table_types, data_types, interner, native_names, native_signatures)
             }
             Command::Query(..) | Command::Run(..) => Ok(CompiledUnit {
                 table_defs: vec![],
@@ -85,12 +85,14 @@ impl Compiler {
     pub fn compile_fact(
         fact: &Bodys,
         table_types: &TableEnv,
+        data_types: &CompileEnv,
         interner: &mut Interner,
         native_names: &Map<String, usize>,
         native_signatures: &Map<String, NativeSignature>,
     ) -> Result<CompiledUnit, CompileError> {
         let mut ctx = CompileCtx {
             table_map: &table_types.name_map,
+            data_types,
             head_variables: &VariableRecord::default(),
             variables: VariableRecord::default(),
             lets: Vec::new(),
@@ -127,6 +129,7 @@ fn compile_rule(
     let query = heads2query(&rule.heads, table_types, data_types, interner)?;
     let mut ctx = CompileCtx {
         table_map: &table_types.name_map,
+        data_types,
         head_variables: &query.variables,
         variables: VariableRecord::default(),
         lets: Vec::new(),
