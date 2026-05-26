@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub struct Row(pub SmallVec<[Value; 6]>);
+pub struct Row(pub SmallVec<[Value; 7]>);
 
 #[derive(Debug, Clone)]
 pub struct Table {

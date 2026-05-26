@@ -42,6 +42,86 @@ pub struct RelatedEGraph {
     pub rule_groups: Map<GroupName, RuleGroup>,
 }
 
+/// Mutable state needed exclusively by action application.
+/// Separated so that action can borrow ruleset independently.
+struct ActionCtx<'a> {
+    tables: &'a mut Vec<Table>,
+    union_find: &'a mut UnionFind,
+    pending_unions: &'a mut Vec<(Value, Value)>,
+    native_functions: &'a [NativeFn],
+}
+
+impl ActionCtx<'_> {
+    fn alloc_id(&mut self) -> Value {
+        let id = Value(self.union_find.parents.len() as u64);
+        self.union_find.add(id);
+        id
+    }
+
+    fn insert(&mut self, table_id: usize, key: Row, value: Value) {
+        let table = &mut self.tables[table_id];
+        debug_assert_eq!(key.0.len(), table.arity());
+        if let Some(idx) = table.insert(&mut self.union_find, key, value) {
+            let column_count = table.column_count();
+            let start = idx.0 * column_count;
+            for i in 0..column_count {
+                let ty = &table.table_def.1[i];
+                if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                    let v = table.rows[start + i];
+                    table.parents.entry(v).or_default().push(idx);
+                }
+            }
+        }
+    }
+
+    fn union(&mut self, old: Value, new: Value) {
+        if let Some(r) = self.union_find.union(old, new) {
+            self.pending_unions.push(r);
+        }
+    }
+
+    pub fn apply_action(&mut self, action: &Action, rows: Set<Row>) {
+        for row in rows.into_iter() {
+            self.apply_action_in_row(action, row);
+        }
+    }
+
+    fn apply_action_in_row(&mut self, action: &Action, mut row: Row) {
+        for call in &action.lets {
+            let args = call.args.iter().map(|arg| arg.resolve(&row)).collect();
+            let result = self.apply_function_call(call, Row(args));
+            row.0.push(result);
+        }
+        for tail in &action.tail {
+            self.apply_action_tail(tail, &row);
+        }
+    }
+
+    fn apply_function_call(&mut self, function_call: &FunctionCall, args: Row) -> Value {
+        if function_call.is_native {
+            return self.native_functions[function_call.offset](&args.0);
+        }
+        let result = self.alloc_id();
+        self.insert(function_call.offset, args, result);
+        result
+    }
+
+    fn apply_action_tail(&mut self, tail: &ActionTail, row: &Row) {
+        match tail {
+            ActionTail::Union(var0, var1) => self.union(var0.resolve(row), var1.resolve(row)),
+            ActionTail::Insert(table_id, args, result) => {
+                let args = Row(args.iter().map(|arg| arg.resolve(row)).collect());
+                if let Some(result) = result {
+                    self.insert(*table_id, args, result.resolve(row));
+                } else {
+                    let id = self.alloc_id();
+                    self.insert(*table_id, args, id);
+                }
+            }
+        }
+    }
+}
+
 impl RelatedEGraph {
     pub fn add_table(&mut self, table_def: TableDef) {
         self.tables.push(Table::new(table_def));
@@ -114,8 +194,14 @@ impl RelatedEGraph {
 
             // Phase 2: apply actions (always serial)
             for ((_driver_table, rule_id), rows) in pairs.iter().zip(results) {
-                let action = &self.ruleset[*rule_id].action.clone();
-                self.apply_action(action, rows);
+                let action = &self.ruleset.get(*rule_id).unwrap().action;
+                let mut ctx = ActionCtx {
+                    tables: &mut self.tables,
+                    union_find: &mut self.union_find,
+                    pending_unions: &mut self.pending_unions,
+                    native_functions: &self.native_functions,
+                };
+                ctx.apply_action(action, rows);
             }
 
             let rebuild_affected = self.rebuild();
@@ -136,44 +222,13 @@ impl RelatedEGraph {
     }
 
     pub fn apply_action(&mut self, action: &Action, rows: Set<Row>) {
-        for row in rows.into_iter() {
-            self.apply_action_in_row(action, row);
-        }
-    }
-
-    fn apply_action_in_row(&mut self, action: &Action, mut row: Row) {
-        for call in &action.lets {
-            let args = call.args.iter().map(|arg| arg.resolve(&row)).collect();
-            let result = self.apply_function_call(call, Row(args));
-            row.0.push(result);
-        }
-        for tail in &action.tail {
-            self.apply_action_tail(tail, &row);
-        }
-    }
-
-    fn apply_function_call(&mut self, function_call: &FunctionCall, args: Row) -> Value {
-        if function_call.is_native {
-            return self.native_functions[function_call.offset](&args.0);
-        }
-        let result = self.alloc_id();
-        self.insert(function_call.offset, args, result);
-        result
-    }
-
-    fn apply_action_tail(&mut self, tail: &ActionTail, row: &Row) {
-        match tail {
-            ActionTail::Union(var0, var1) => self.union(var0.resolve(row), var1.resolve(row)),
-            ActionTail::Insert(table_id, args, result) => {
-                let args = Row(args.iter().map(|arg| arg.resolve(row)).collect());
-                if let Some(result) = result {
-                    self.insert(*table_id, args, result.resolve(row));
-                } else {
-                    let id = self.alloc_id();
-                    self.insert(*table_id, args, id);
-                }
-            }
-        }
+        let mut ctx = ActionCtx {
+            tables: &mut self.tables,
+            union_find: &mut self.union_find,
+            pending_unions: &mut self.pending_unions,
+            native_functions: &self.native_functions,
+        };
+        ctx.apply_action(action, rows);
     }
 
     pub fn run_query(&self, query: &Query, delta_table: Option<TableId>) -> Set<Row> {
@@ -364,12 +419,6 @@ impl RelatedEGraph {
         let offset = self.native_functions.len();
         self.native_functions.push(func);
         offset
-    }
-
-    pub fn alloc_id(&mut self) -> Value {
-        let id = Value(self.union_find.parents.len() as u64);
-        self.union_find.add(id);
-        id
     }
 
     pub fn find_defining_row(&self, id: Value) -> Option<(TableId, RowIndex)> {
