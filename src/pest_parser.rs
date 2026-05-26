@@ -154,8 +154,10 @@ fn parse_body(pair: pest::iterators::Pair<Rule>) -> Body {
             Body::Let(span, var, call)
         }
         Rule::insert => {
-            let call = parse_function_call(inner.into_inner().next().unwrap());
-            Body::Insert(span, call, None)
+            let mut parts = inner.into_inner();
+            let call = parse_function_call(parts.next().unwrap());
+            let expr = parts.next().map(parse_expr);
+            Body::Insert(span, call, expr)
         }
         Rule::union => {
             let mut parts = inner.into_inner();
@@ -169,6 +171,15 @@ fn parse_body(pair: pest::iterators::Pair<Rule>) -> Body {
 
 fn parse_bodies(pair: pest::iterators::Pair<Rule>) -> Box<[Body]> {
     pair.into_inner().map(parse_body).collect()
+}
+
+fn parse_merge_fn(pair: pest::iterators::Pair<Rule>) -> MergeFn {
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_str() {
+        "min" => MergeFn::Min,
+        "max" => MergeFn::Max,
+        _ => unreachable!(),
+    }
 }
 
 fn parse_base_type(pair: pest::iterators::Pair<Rule>) -> BaseType {
@@ -221,18 +232,21 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
             let name = parse_variable(parts.next().unwrap());
             let mut types: Vec<_> = parts.map(parse_type).collect();
             types.push(Type::Base(BaseType::Id));
-            Command::TableDef(name.clone(), TableDef(name, types.into()))
+            Command::TableDef(name.clone(), TableDef(name, types.into(), None))
         }
         Rule::function_def => {
             let mut parts = inner.into_inner();
             let name = parse_variable(parts.next().unwrap());
             let mut types = Vec::new();
+            let mut merge = None;
             for part in parts {
-                if part.as_rule() == Rule::r#type {
-                    types.push(parse_type(part));
+                match part.as_rule() {
+                    Rule::r#type => types.push(parse_type(part)),
+                    Rule::merge_suffix => merge = Some(parse_merge_fn(part)),
+                    _ => {}
                 }
             }
-            Command::TableDef(name.clone(), TableDef(name, types.into()))
+            Command::TableDef(name.clone(), TableDef(name, types.into(), merge))
         }
         Rule::rule => {
             let mut parts = inner.into_inner();

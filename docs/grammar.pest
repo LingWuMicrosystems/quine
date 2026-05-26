@@ -1,6 +1,6 @@
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
-KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "run" | "saturate" | "repeat" | "=" | op | "{" | "}" | ";" }
+KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "run" | "saturate" | "repeat" | "merge" | "min" | "max" | "=" | op | "{" | "}" | ";" }
 
 TOP_LEVEL = {
     command*
@@ -37,7 +37,7 @@ heads = {
 }
 
 bodies = {
-    body ~ ("," ~ body)*
+    body ~ (";" ~ body)*
 }
 
 head = {
@@ -90,7 +90,7 @@ let_ = {
 }
 
 insert = {
-    "set" ~ function_call
+    "set" ~ function_call ~ ("=" ~ expr)?
 }
 
 union = {
@@ -113,7 +113,16 @@ relation_def = {
 }
 
 function_def = {
-    "function" ~ variable ~ "(" ~ (type ~ ("," ~ type)*)? ~ ")" ~ "->" ~ type
+    "function" ~ variable ~ "(" ~ (type ~ ("," ~ type)*)? ~ ")" ~ "->" ~ type ~ merge_suffix?
+}
+
+merge_suffix = {
+    "merge" ~ merge_op
+}
+
+merge_op = {
+    "min"
+  | "max"
 }
 
 type_constructor = {

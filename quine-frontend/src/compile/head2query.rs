@@ -144,19 +144,32 @@ pub fn heads2query(
                     (Some(t), None) | (None, Some(t)) => t,
                     (None, None) => Type::Base(BaseType::Id),
                 };
-                let Some(lhs) = check_and_compile_pattern(&mut ctx, pattern, &defined_type, None)?
-                else {
-                    continue;
-                };
                 let Some(rhs) = check_and_compile_pattern(&mut ctx, pattern1, &defined_type, None)?
                 else {
                     continue;
                 };
-                ctx.constraints.insert(CrossConstraint {
-                    op: Op::Equ,
-                    lhs,
-                    rhs,
-                });
+                if let Pattern::Variable(_, name) = pattern {
+                    if let Some(existing) = ctx.variables.get_offset(name) {
+                        ctx.constraints.insert(CrossConstraint {
+                            op: Op::Equ,
+                            lhs: VarId(existing),
+                            rhs,
+                        });
+                    } else {
+                        ctx.variables.names_map.insert(name.clone(), rhs.0);
+                    }
+                } else {
+                    let Some(lhs) =
+                        check_and_compile_pattern(&mut ctx, pattern, &defined_type, None)?
+                    else {
+                        continue;
+                    };
+                    ctx.constraints.insert(CrossConstraint {
+                        op: Op::Equ,
+                        lhs,
+                        rhs,
+                    });
+                }
             }
         }
     }
@@ -198,7 +211,7 @@ fn check_and_compile_con_pattern(
         .ok_or_else(|| CompileError::InvalidTableName(constructor_pattern.name.clone()))?;
     let table = &ctx.table_env.tables[table_id];
 
-    let arity = table.1.len().saturating_sub(1);
+    let arity = table.1.len() - 1;
     if arity != constructor_pattern.args.len() {
         return Err(CompileError::InvalidTableWidth(
             constructor_pattern.args.len(),
@@ -231,7 +244,7 @@ fn check_and_compile_con_pattern(
             .data_types
             .get_constructor_type(&constructor_pattern.name)
             .map(Type::Name)
-            .unwrap_or(Type::Base(BaseType::Id));
+            .unwrap_or_else(|| table.1[arity].clone());
         let res = ctx.variables.insert_var(None, result_ty);
         ctx.scan_steps[step_idx].columns.push((result_col, res));
         ctx.var_to_steps.entry(res).or_default().push(step_idx);
@@ -245,10 +258,16 @@ fn check_and_compile_con_pattern(
 
 fn infer_data_type(pattern: &Pattern, ctx: &QueryCtx) -> Option<Type> {
     match pattern {
-        Pattern::Constructor(_, cp) => ctx
-            .data_types
-            .get_constructor_type(&cp.name)
-            .map(Type::Name),
+        Pattern::Constructor(_, cp) => {
+            if let Some(type_name) = ctx.data_types.get_constructor_type(&cp.name) {
+                Some(Type::Name(type_name))
+            } else if let Some(table_def) = ctx.table_env.get_from_name(&cp.name) {
+                let arity = table_def.1.len() - 1;
+                Some(table_def.1[arity].clone())
+            } else {
+                None
+            }
+        }
         Pattern::Variable(_, name) => ctx
             .variables
             .get_offset(name)
@@ -303,20 +322,33 @@ fn check_and_compile_pattern(
             }
         }
         Pattern::Constructor(_, constructor_pattern) => {
-            // constructor_pattern.name is already fully qualified (e.g. "Expr.Add")
-            let actual_type = ctx
-                .data_types
-                .get_constructor_type(&constructor_pattern.name)
-                .ok_or_else(|| CompileError::InvalidTableName(constructor_pattern.name.clone()))?;
-            let expected = Type::Name(actual_type);
-            if &expected != defined_type {
-                return Err(CompileError::TypeCheckError(
-                    expected,
-                    defined_type.clone(),
-                ));
+            if let Some(actual_type) =
+                ctx.data_types.get_constructor_type(&constructor_pattern.name)
+            {
+                let expected = Type::Name(actual_type);
+                if &expected != defined_type {
+                    return Err(CompileError::TypeCheckError(expected, defined_type.clone()));
+                }
+                let res = check_and_compile_con_pattern(ctx, constructor_pattern, true)?;
+                Ok(Some(res.unwrap()))
+            } else if let Some(table_def) =
+                ctx.table_env.get_from_name(&constructor_pattern.name)
+            {
+                let arity = table_def.1.len() - 1;
+                let actual_type = table_def.1[arity].clone();
+                if &actual_type != defined_type {
+                    return Err(CompileError::TypeCheckError(
+                        actual_type,
+                        defined_type.clone(),
+                    ));
+                }
+                let res = check_and_compile_con_pattern(ctx, constructor_pattern, true)?;
+                Ok(Some(res.unwrap()))
+            } else {
+                Err(CompileError::InvalidTableName(
+                    constructor_pattern.name.clone(),
+                ))
             }
-            let res = check_and_compile_con_pattern(ctx, constructor_pattern, true)?;
-            Ok(Some(res.unwrap()))
         }
     }
 }

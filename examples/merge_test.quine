@@ -1,0 +1,13 @@
+data Expr = Add(Expr, Expr) | Const(i32)
+
+function cost(Expr) -> i32 merge min
+
+rule "cost" leteq r = Expr.Add(a, b), leteq ca = cost(a) {
+    let total = add(1i32, ca);
+    set cost(r) = total
+}
+
+fact set Expr.Const(42i32)
+fact set Expr.Add(Expr.Const(1i32), Expr.Const(2i32))
+
+run saturate

@@ -13,8 +13,14 @@ pub struct SumType(pub Box<[TypeConstructor]>);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeConstructor(pub String, pub Box<[Type]>);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MergeFn {
+    Min,
+    Max,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TableDef(pub String, pub Box<[Type]>);
+pub struct TableDef(pub String, pub Box<[Type]>, pub Option<MergeFn>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -63,6 +69,10 @@ impl BaseType {
             self,
             BaseType::I8 | BaseType::I16 | BaseType::I32 | BaseType::I64
         )
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        !matches!(self, BaseType::Id | BaseType::Str)
     }
 }
 
@@ -129,6 +139,14 @@ impl Display for TableDef {
             f,
             "table {}",
             TypeConstructor(self.0.clone(), self.1.clone())
-        )
+        )?;
+        if let Some(merge) = &self.2 {
+            match merge {
+                MergeFn::Min => write!(f, " merge min"),
+                MergeFn::Max => write!(f, " merge max"),
+            }
+        } else {
+            Ok(())
+        }
     }
 }

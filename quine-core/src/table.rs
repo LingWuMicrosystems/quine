@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 use crate::{
     common::{ColumnIndex, Map, RowIndex, Value},
     rule::{Constraint, Op},
-    types::{BaseType, TableDef, Type},
+    types::{BaseType, MergeFn, TableDef, Type},
     uf::UnionFind,
 };
 
@@ -96,19 +96,31 @@ impl Table {
     pub fn insert(&mut self, uf: &mut UnionFind, mut key: Row, value: Value) {
         debug_assert_eq!(key.0.len(), self.arity());
         if let Some(r) = self.key_index.get(&key) {
-            // TODO: Conflict Merge!
-            // Currently assumes the result column is always Id (e-class reference).
-            // For non-Id result types (e.g. i32 from 'function' tables), this
-            // branch needs a user-specified merge function (min, max, first, last, etc.)
-            // instead of uf.union.
             let column = self.column_count();
             let arity = self.arity();
-            let value_ref = &mut self.rows[r.0 * column + arity];
-            if let Some((_old, value)) = uf.union(*value_ref, value) {
-                *value_ref = value;
-            } else {
-                *value_ref = value;
-            };
+            let value_idx = r.0 * column + arity;
+            let value_ref = &mut self.rows[value_idx];
+            match &self.table_def.2 {
+                Some(MergeFn::Min) => {
+                    if value < *value_ref {
+                        *value_ref = value;
+                        self.delta_start_row = 0;
+                    }
+                }
+                Some(MergeFn::Max) => {
+                    if value > *value_ref {
+                        *value_ref = value;
+                        self.delta_start_row = 0;
+                    }
+                }
+                None => {
+                    if let Some((_old, value)) = uf.union(*value_ref, value) {
+                        *value_ref = value;
+                    } else {
+                        *value_ref = value;
+                    };
+                }
+            }
         } else {
             // update key_index
             self.key_index.insert(key.clone(), RowIndex(self.row_count));
