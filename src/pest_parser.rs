@@ -4,9 +4,10 @@ use quine_core::{rule::Op, types::*};
 
 use quine_frontend::syntax::{
     Atom, AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
-    Rule as SyntaxRule, Run as SyntaxRun, RunBody, Span,
+    Rule as SyntaxRule, Span,
 };
 use quine_core::related_egraph::RunMode;
+use quine_frontend::{Run as SyntaxRun, RunBody};
 
 #[derive(Parser)]
 #[grammar = "../docs/grammar.pest"]
