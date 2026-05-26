@@ -103,9 +103,11 @@ impl EngineContext {
     }
 
     pub fn apply_run_program(&mut self, run_body: &[Run]) -> bool {
-        run_body
-            .iter()
-            .fold(true, |ok, run| self.apply_run(run) && ok)
+        let mut sat = true;
+        for run in run_body {
+            sat &= self.apply_run(run);
+        }
+        sat
     }
 
     pub fn query(&mut self, query: &Query, vars: &[String]) -> (VariableRecord, Set<Row>) {

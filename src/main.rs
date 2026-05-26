@@ -1,10 +1,10 @@
 use std::env;
 use std::{borrow::Cow, fs, path::PathBuf};
 
+use quine_frontend::EngineContext;
 use quine_frontend::compile::compile_command;
 use quine_frontend::compile::head2query::heads2query;
 use quine_frontend::syntax::Command;
-use quine_frontend::EngineContext;
 
 use quine::pest_parser::{parse_file, parse_repl_commands};
 use quine_frontend::prelude::register_prelude;
@@ -92,15 +92,12 @@ fn execute_file_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<
 }
 
 fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), String> {
-    match &cmd {
-        Command::Query(heads, vars) => {
-            let query = heads2query(heads, &ctx.table_types, &ctx.data_types, &mut ctx.interner)
-                .map_err(|e| format!("{:?}", e))?;
-            let (var_record, rows) = ctx.query(&query, vars);
-            print_query_result(&var_record, rows, ctx);
-            return Ok(());
-        }
-        _ => {}
+    if let Command::Query(heads, vars) = &cmd {
+        let query = heads2query(heads, &ctx.table_types, &ctx.data_types, &mut ctx.interner)
+            .map_err(|e| format!("{:?}", e))?;
+        let (var_record, rows) = ctx.query(&query, vars);
+        print_query_result(&var_record, rows, ctx);
+        return Ok(());
     }
     let unit = compile_command(
         &cmd,

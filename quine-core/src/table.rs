@@ -78,8 +78,8 @@ impl Table {
                     }
                 }
                 None => {
-                    if let Some((_old, value)) = uf.union(*value_ref, value) {
-                        *value_ref = value;
+                    if let Some((parent, _child)) = uf.union(*value_ref, value) {
+                        *value_ref = parent;
                     } else {
                         *value_ref = value;
                     };
