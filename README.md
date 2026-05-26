@@ -7,7 +7,6 @@ Relation-graph match-rewrite engine — e-graph equality saturation with datalog
 ```bash
 quine                    # Start REPL
 quine file.quine         # Execute a file
-quine -e "source"        # Execute inline source, then enter REPL
 ```
 
 ### REPL Meta-commands
@@ -35,7 +34,7 @@ relation node(i32)
 ### Functions
 
 ```
-function add(i32, i32) -> i32
+function add(i32, i32) -> i32 merge min
 ```
 
 ### Facts

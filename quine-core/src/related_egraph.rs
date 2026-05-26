@@ -42,6 +42,86 @@ pub struct RelatedEGraph {
     pub rule_groups: Map<GroupName, RuleGroup>,
 }
 
+/// Mutable state needed exclusively by action application.
+/// Separated so that action can borrow ruleset independently.
+struct ActionCtx<'a> {
+    tables: &'a mut Vec<Table>,
+    union_find: &'a mut UnionFind,
+    pending_unions: &'a mut Vec<(Value, Value)>,
+    native_functions: &'a [NativeFn],
+}
+
+impl ActionCtx<'_> {
+    fn alloc_id(&mut self) -> Value {
+        let id = Value(self.union_find.parents.len() as u64);
+        self.union_find.add(id);
+        id
+    }
+
+    fn insert(&mut self, table_id: usize, key: Row, value: Value) {
+        let table = &mut self.tables[table_id];
+        debug_assert_eq!(key.0.len(), table.arity());
+        if let Some(idx) = table.insert(&mut self.union_find, key, value) {
+            let column_count = table.column_count();
+            let start = idx.0 * column_count;
+            for i in 0..column_count {
+                let ty = &table.table_def.1[i];
+                if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                    let v = table.rows[start + i];
+                    table.parents.entry(v).or_default().push(idx);
+                }
+            }
+        }
+    }
+
+    fn union(&mut self, old: Value, new: Value) {
+        if let Some(r) = self.union_find.union(old, new) {
+            self.pending_unions.push(r);
+        }
+    }
+
+    pub fn apply_action(&mut self, action: &Action, rows: Set<Row>) {
+        for row in rows.into_iter() {
+            self.apply_action_in_row(action, row);
+        }
+    }
+
+    fn apply_action_in_row(&mut self, action: &Action, mut row: Row) {
+        for call in &action.lets {
+            let args = call.args.iter().map(|arg| arg.resolve(&row)).collect();
+            let result = self.apply_function_call(call, Row(args));
+            row.0.push(result);
+        }
+        for tail in &action.tail {
+            self.apply_action_tail(tail, &row);
+        }
+    }
+
+    fn apply_function_call(&mut self, function_call: &FunctionCall, args: Row) -> Value {
+        if function_call.is_native {
+            return self.native_functions[function_call.offset](&args.0);
+        }
+        let result = self.alloc_id();
+        self.insert(function_call.offset, args, result);
+        result
+    }
+
+    fn apply_action_tail(&mut self, tail: &ActionTail, row: &Row) {
+        match tail {
+            ActionTail::Union(var0, var1) => self.union(var0.resolve(row), var1.resolve(row)),
+            ActionTail::Insert(table_id, args, result) => {
+                let args = Row(args.iter().map(|arg| arg.resolve(row)).collect());
+                if let Some(result) = result {
+                    self.insert(*table_id, args, result.resolve(row));
+                } else {
+                    let id = self.alloc_id();
+                    self.insert(*table_id, args, id);
+                }
+            }
+        }
+    }
+}
+
 impl RelatedEGraph {
     pub fn add_table(&mut self, table_def: TableDef) {
         self.tables.push(Table::new(table_def));
@@ -68,11 +148,7 @@ impl RelatedEGraph {
     /// iteration limit is reached.
     ///
     /// Returns `true` if fixpoint was reached, `false` if truncated by Repeat.
-    pub fn run_semi_naive(
-        &mut self,
-        rule_filter: Option<&RuleGroup>,
-        mode: RunMode,
-    ) -> bool {
+    pub fn run_semi_naive(&mut self, rule_filter: Option<&RuleGroup>, mode: RunMode) -> bool {
         let mut iteration = 0;
         loop {
             // Collect (driver_table, rule) pairs for tables that have delta rows
@@ -118,8 +194,14 @@ impl RelatedEGraph {
 
             // Phase 2: apply actions (always serial)
             for ((_driver_table, rule_id), rows) in pairs.iter().zip(results) {
-                let action = &self.ruleset[*rule_id].action.clone();
-                self.apply_action(action, rows);
+                let action = &self.ruleset.get(*rule_id).unwrap().action;
+                let mut ctx = ActionCtx {
+                    tables: &mut self.tables,
+                    union_find: &mut self.union_find,
+                    pending_unions: &mut self.pending_unions,
+                    native_functions: &self.native_functions,
+                };
+                ctx.apply_action(action, rows);
             }
 
             let rebuild_affected = self.rebuild();
@@ -140,44 +222,13 @@ impl RelatedEGraph {
     }
 
     pub fn apply_action(&mut self, action: &Action, rows: Set<Row>) {
-        for row in rows.into_iter() {
-            self.apply_action_in_row(action, row);
-        }
-    }
-
-    fn apply_action_in_row(&mut self, action: &Action, mut row: Row) {
-        for call in &action.lets {
-            let args = call.args.iter().map(|arg| arg.resolve(&row)).collect();
-            let result = self.apply_function_call(call, Row(args));
-            row.0.push(result);
-        }
-        for tail in &action.tail {
-            self.apply_action_tail(tail, &row);
-        }
-    }
-
-    fn apply_function_call(&mut self, function_call: &FunctionCall, args: Row) -> Value {
-        if function_call.is_native {
-            return self.native_functions[function_call.offset](&args.0);
-        }
-        let result = self.alloc_id();
-        self.insert(function_call.offset, args, result);
-        result
-    }
-
-    fn apply_action_tail(&mut self, tail: &ActionTail, row: &Row) {
-        match tail {
-            ActionTail::Union(var0, var1) => self.union(var0.resolve(row), var1.resolve(row)),
-            ActionTail::Insert(table_id, args, result) => {
-                let args = Row(args.iter().map(|arg| arg.resolve(row)).collect());
-                if let Some(result) = result {
-                    self.insert(*table_id, args, result.resolve(row));
-                } else {
-                    let id = self.alloc_id();
-                    self.insert(*table_id, args, id);
-                }
-            }
-        }
+        let mut ctx = ActionCtx {
+            tables: &mut self.tables,
+            union_find: &mut self.union_find,
+            pending_unions: &mut self.pending_unions,
+            native_functions: &self.native_functions,
+        };
+        ctx.apply_action(action, rows);
     }
 
     pub fn run_query(&self, query: &Query, delta_table: Option<TableId>) -> Set<Row> {
@@ -247,26 +298,45 @@ impl RelatedEGraph {
             }
         }
 
+        // Build permutation: VarId -> current column position.
+        // After join, columns are in discovery order, but VarId::resolve
+        // indexes by VarId directly. Reorder so position i = VarId(i).
+        let var_count = result_vars.iter().map(|v| v.0).max().map_or(0, |m| m + 1);
+        let mut var_to_pos: smallvec::SmallVec<[usize; 8]> = (0..var_count).collect();
+        for (pos, var) in result_vars.iter().enumerate() {
+            var_to_pos[var.0] = pos;
+        }
+
         rows.into_iter()
             .filter(|row| {
                 query.constraints.iter().all(|cs| {
-                    let Some(lhs) = row.0.get(cs.lhs.0) else {
+                    let Some(&lhs) = row.0.get(var_to_pos[cs.lhs.0]) else {
                         return true;
                     };
-                    let Some(rhs) = row.0.get(cs.rhs.0) else {
+                    let Some(&rhs) = row.0.get(var_to_pos[cs.rhs.0]) else {
                         return true;
                     };
-                    let ty = query.variables.get_type(cs.lhs.0).unwrap();
-                    check_cross(*lhs, *rhs, cs.op, ty)
+                    check_cross(lhs, rhs, cs.op)
                 })
             })
+            .map(|row| Row(var_to_pos.iter().map(|&p| row.0[p]).collect()))
             .collect()
     }
 
     pub fn insert(&mut self, table_id: usize, key: Row, value: Value) {
         let table = &mut self.tables[table_id];
         debug_assert_eq!(key.0.len(), table.arity());
-        table.insert(&mut self.union_find, key, value);
+        if let Some(idx) = table.insert(&mut self.union_find, key, value) {
+            let column_count = table.column_count();
+            let start = idx.0 * column_count;
+            for i in 0..column_count {
+                let ty = &table.table_def.1[i];
+                if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                    let v = table.rows[start + i];
+                    table.parents.entry(v).or_default().push(idx);
+                }
+            }
+        }
     }
 
     pub fn union(&mut self, old: Value, new: Value) {
@@ -276,7 +346,7 @@ impl RelatedEGraph {
     }
 
     pub fn rebuild(&mut self) -> Set<TableId> {
-        let mut affected = Set::default();
+        let mut affected: Map<TableId, usize> = Map::default();
         while let Some((_parent, child)) = self.pending_unions.pop() {
             for tid in 0..self.tables.len() {
                 let table = &self.tables[tid];
@@ -290,8 +360,17 @@ impl RelatedEGraph {
                     .collect();
 
                 if !pairs.is_empty() {
-                    self.tables[tid].delta_start_row = 0;
-                    affected.insert(tid);
+                    // Track minimum affected row index so we only
+                    // rescan from that point, not the whole table.
+                    let min_idx = indices
+                        .iter()
+                        .map(|i| i.0)
+                        .chain(pairs.iter().map(|(i, _, _)| i.0))
+                        .min()
+                        .unwrap_or(0);
+                    let entry = affected.entry(tid).or_insert(usize::MAX);
+                    *entry = (*entry).min(min_idx);
+
                     let merge = self.tables[tid].table_def.2;
                     let new_pairs: Vec<_> = match merge {
                         Some(merge_fn) => {
@@ -302,10 +381,18 @@ impl RelatedEGraph {
                                     &mut self.tables[tid].rows[existing_idx.0 * column + arity];
                                 let resolved = match merge_fn {
                                     MergeFn::Min => {
-                                        if *new < *old { *new } else { *old }
+                                        if *new < *old {
+                                            *new
+                                        } else {
+                                            *old
+                                        }
                                     }
                                     MergeFn::Max => {
-                                        if *new > *old { *new } else { *old }
+                                        if *new > *old {
+                                            *new
+                                        } else {
+                                            *old
+                                        }
                                     }
                                 };
                                 *value_ref = resolved;
@@ -321,19 +408,17 @@ impl RelatedEGraph {
                 }
             }
         }
-        affected
+        for (tid, min_idx) in &affected {
+            let table = &mut self.tables[*tid];
+            table.delta_start_row = table.delta_start_row.min(*min_idx);
+        }
+        affected.into_keys().collect()
     }
 
     pub fn register_native_fn(&mut self, func: NativeFn) -> usize {
         let offset = self.native_functions.len();
         self.native_functions.push(func);
         offset
-    }
-
-    pub fn alloc_id(&mut self) -> Value {
-        let id = Value(self.union_find.parents.len() as u64);
-        self.union_find.add(id);
-        id
     }
 
     pub fn find_defining_row(&self, id: Value) -> Option<(TableId, RowIndex)> {
@@ -390,56 +475,14 @@ fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(RowIndex
     Some((*existing, old, new))
 }
 
-fn check_cross(lhs: Value, rhs: Value, op: Op, ty: &Type) -> bool {
-    let base = match ty {
-        Type::Base(b) => b,
-        Type::Name(_) => {
-            return match op {
-                Op::Equ => lhs == rhs,
-                Op::Neq => lhs != rhs,
-                _ => false,
-            };
-        }
-    };
-    match base {
-        BaseType::Id | BaseType::Str => match op {
-            Op::Equ => lhs == rhs,
-            Op::Neq => lhs != rhs,
-            _ => false,
-        },
-        BaseType::I1 => {
-            let l = lhs.0 != 0;
-            let r = rhs.0 != 0;
-            cmp_cross_inner(l, r, op)
-        }
-        BaseType::I8 => cmp_cross_inner(lhs.0 as i8, rhs.0 as i8, op),
-        BaseType::U8 => cmp_cross_inner(lhs.0 as u8, rhs.0 as u8, op),
-        BaseType::I16 => cmp_cross_inner(lhs.0 as i16, rhs.0 as i16, op),
-        BaseType::U16 => cmp_cross_inner(lhs.0 as u16, rhs.0 as u16, op),
-        BaseType::I32 => cmp_cross_inner(lhs.0 as i32, rhs.0 as i32, op),
-        BaseType::U32 => cmp_cross_inner(lhs.0 as u32, rhs.0 as u32, op),
-        BaseType::I64 => cmp_cross_inner(lhs.0 as i64, rhs.0 as i64, op),
-        BaseType::U64 => cmp_cross_inner(lhs.0, rhs.0, op),
-        BaseType::F32 => {
-            let l = f32::from_bits(lhs.0 as u32);
-            let r = f32::from_bits(rhs.0 as u32);
-            cmp_cross_inner(l, r, op)
-        }
-        BaseType::F64 => {
-            let l = f64::from_bits(lhs.0);
-            let r = f64::from_bits(rhs.0);
-            cmp_cross_inner(l, r, op)
-        }
-    }
-}
-
-fn cmp_cross_inner<T: PartialEq + PartialOrd>(l: T, r: T, op: Op) -> bool {
+#[inline]
+fn check_cross(lhs: Value, rhs: Value, op: Op) -> bool {
     match op {
-        Op::Equ => l == r,
-        Op::Neq => l != r,
-        Op::Lt => l < r,
-        Op::Gt => l > r,
-        Op::Leq => l <= r,
-        Op::Geq => l >= r,
+        Op::Equ => lhs.0 == rhs.0,
+        Op::Neq => lhs.0 != rhs.0,
+        Op::Lt => lhs.0 < rhs.0,
+        Op::Gt => lhs.0 > rhs.0,
+        Op::Leq => lhs.0 <= rhs.0,
+        Op::Geq => lhs.0 >= rhs.0,
     }
 }
