@@ -69,9 +69,11 @@ impl EngineContext {
                 }
             }
             CompiledUnit::Rule(group_name, rule) => self.regraph.add_rule(group_name, rule),
-            CompiledUnit::Action(action) => self
-                .regraph
-                .apply_action(&action, Set::from_iter([Row::default()])),
+            CompiledUnit::Action(action) => {
+                self.regraph
+                    .apply_action(&action, Set::from_iter([Row::default()]));
+                self.regraph.rebuild();
+            }
             CompiledUnit::Run(run) => {
                 self.apply_run(&run);
             }

@@ -3,9 +3,7 @@ data Expr = Add(Expr, Expr) | Const(i32)
 relation node(Expr)
 fact set node(Expr.Const(0i32))
 fact set node(Expr.Const(1i32))
-fact set node(Expr.Add(Expr.Const(1i32), Expr.Const(0i32)))
-fact set node(Expr.Add(Expr.Const(0i32), Expr.Const(0i32)))
-fact set node(Expr.Add(Expr.Const(1i32), Expr.Add(Expr.Const(0i32), Expr.Const(0i32))))
+fact set node(Expr.Add(Expr.Const(3i32), Expr.Const(0i32)))
 
 rule node(r), leteq r = Expr.Add(a,Expr.Const(0i32)) {
     union r with a

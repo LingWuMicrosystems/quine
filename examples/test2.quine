@@ -1,0 +1,15 @@
+data Variant = N(i32) | S(Variant)
+
+relation node(Variant)
+
+fact set Variant.N(0i32)
+fact set Variant.N(1i32)
+fact set Variant.S(Variant.N(0i32))
+fact set Variant.S(Variant.N(1i32))
+
+fact set node(Variant.S(Variant.N(0i32)))
+fact set node(Variant.S(Variant.N(1i32)))
+
+fact union Variant.N(0i32) with Variant.N(1i32)
+
+query node(x) print(x)

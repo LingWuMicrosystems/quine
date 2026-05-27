@@ -23,6 +23,25 @@ pub struct Table {
     pub delta_start_row: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModifyState {
+    NoModify,
+    UnionRow(RowIndex),
+    MergeRow(RowIndex),
+    NewRow(RowIndex),
+}
+
+impl Into<Option<RowIndex>> for ModifyState {
+    fn into(self) -> Option<RowIndex> {
+        match self {
+            ModifyState::NoModify => None,
+            ModifyState::MergeRow(row_index)
+            | ModifyState::UnionRow(row_index)
+            | ModifyState::NewRow(row_index) => Some(row_index),
+        }
+    }
+}
+
 impl Table {
     pub fn new(table_def: TableDef) -> Self {
         Self {
@@ -57,43 +76,42 @@ impl Table {
 
     /// Inserts a row. Returns `Some(row_index)` if a new row was added,
     /// `None` if an existing row was updated.
-    pub fn insert(&mut self, uf: &mut UnionFind, mut key: Row, value: Value) -> Option<RowIndex> {
+    pub fn insert(&mut self, uf: &mut UnionFind, mut key: Row, value: Value) -> ModifyState {
         debug_assert_eq!(key.0.len(), self.arity());
-        if let Some(r) = self.key_index.get(&key) {
-            let column = self.column_count();
-            let arity = self.arity();
-            let value_idx = r.0 * column + arity;
-            let value_ref = &mut self.rows[value_idx];
-            match &self.table_def.2 {
-                Some(MergeFn::Min) => {
-                    if value < *value_ref {
-                        *value_ref = value;
-                        self.delta_start_row = 0;
-                    }
-                }
-                Some(MergeFn::Max) => {
-                    if value > *value_ref {
-                        *value_ref = value;
-                        self.delta_start_row = 0;
-                    }
-                }
-                None => {
-                    if let Some((parent, _child)) = uf.union(*value_ref, value) {
-                        *value_ref = parent;
-                    } else {
-                        *value_ref = value;
-                    };
-                }
-            }
-            None
-        } else {
+        let Some(r) = self.key_index.get(&key) else {
             let idx = RowIndex(self.row_count);
             self.key_index.insert(key.clone(), idx);
             key.0.push(value);
             self.rows.extend(&key.0);
             self.row_count += 1;
-            Some(idx)
+            return ModifyState::NewRow(idx);
+        };
+
+        let column = self.column_count();
+        let arity = self.arity();
+        let value_idx = r.0 * column + arity;
+        let value_ref = &mut self.rows[value_idx];
+        if value_ref == &value {
+            return ModifyState::NoModify;
         }
+
+        let Some(merge_fn) = &self.table_def.2 else {
+            let rhs = if let Some((parent, _child)) = uf.union(*value_ref, value) {
+                parent
+            } else {
+                value
+            };
+            *value_ref = rhs;
+            self.delta_start_row = self.delta_start_row.min(r.0);
+            return ModifyState::UnionRow(*r);
+        };
+
+        let min = value_ref.0.min(value.0);
+        let max = value_ref.0.max(value.0);
+        let value = if merge_fn == &MergeFn::Min { min } else { max };
+        *value_ref = Value(value);
+        self.delta_start_row = self.delta_start_row.min(r.0);
+        ModifyState::MergeRow(*r)
     }
 
     pub fn fused_scan(
