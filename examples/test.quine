@@ -3,7 +3,12 @@ data Expr = Add(Expr, Expr) | Const(i32)
 fact set Expr.Const(0i32)
 fact set Expr.Const(1i32)
 fact set Expr.Add(Expr.Const(1i32), Expr.Const(0i32))
+fact set Expr.Add(Expr.Const(2i32), Expr.Const(0i32))
+fact set Expr.Add(Expr.Const(2i32), Expr.Const(4i32))
 
 rule leteq r = Expr.Add(a,Expr.Const(0i32)) {
     union r with a
 }
+
+run saturate
+query leteq v = Expr.Add(_, _) print(v)
