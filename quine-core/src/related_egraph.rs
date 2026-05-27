@@ -126,7 +126,7 @@ impl ActionCtx<'_> {
         }
         let result = self.alloc_id();
         self.insert(function_call.offset, args, result);
-        result
+        self.union_find.find(result)
     }
 
     fn apply_action_tail(&mut self, tail: &ActionTail, row: &Row) {
