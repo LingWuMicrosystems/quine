@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use crate::{
     common::{ColumnIndex, Map, RowIndex, Set, Value, VarId},
     rule::{Action, ActionTail, Constraint, FunctionCall, Op, Query, Rule, ScanStep},
-    table::{Row, Table},
+    table::{ModifyState, Row, Table},
     types::{BaseType, MergeFn, TableDef, Type},
     uf::UnionFind,
 };
@@ -60,17 +60,40 @@ impl ActionCtx<'_> {
 
     fn insert(&mut self, table_id: usize, key: Row, value: Value) {
         let table = &mut self.tables[table_id];
-        debug_assert_eq!(key.0.len(), table.arity());
-        if let Some(idx) = table.insert(self.union_find, key, value) {
-            let column_count = table.column_count();
-            let start = idx.0 * column_count;
-            for i in 0..column_count {
-                let ty = &table.table_def.1[i];
-                if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
-                    let v = table.rows[start + i];
-                    table.parents.entry(v).or_default().push(idx);
+        let arity = table.arity();
+        debug_assert_eq!(key.0.len(), arity);
+
+        // Snapshot pre-insert canonicals so we can detect unions.
+        let col = table.column_count();
+        let existing_idx = table.key_index.get(&key).copied();
+        let old_canonical = existing_idx
+            .map(|idx| self.union_find.find(table.rows[idx.0 * col + arity]));
+        let new_canonical = self.union_find.find(value);
+
+        match table.insert(&mut self.union_find, key, value) {
+            ModifyState::NewRow(idx) => {
+                let start = idx.0 * col;
+                for i in 0..col {
+                    let ty = &table.table_def.1[i];
+                    if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                        let v = table.rows[start + i];
+                        table.parents.entry(v).or_default().push(idx);
+                    }
                 }
             }
+            ModifyState::UnionRow(_) => {
+                if let Some(old) = old_canonical {
+                    if old != new_canonical {
+                        let pair = if old < new_canonical {
+                            (old, new_canonical)
+                        } else {
+                            (new_canonical, old)
+                        };
+                        self.pending_unions.push(pair);
+                    }
+                }
+            }
+            ModifyState::MergeRow(_) | ModifyState::NoModify => {}
         }
     }
 
@@ -368,17 +391,39 @@ impl RelatedEGraph {
 
     pub fn insert(&mut self, table_id: usize, key: Row, value: Value) {
         let table = &mut self.tables[table_id];
-        debug_assert_eq!(key.0.len(), table.arity());
-        if let Some(idx) = table.insert(&mut self.union_find, key, value) {
-            let column_count = table.column_count();
-            let start = idx.0 * column_count;
-            for i in 0..column_count {
-                let ty = &table.table_def.1[i];
-                if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
-                    let v = table.rows[start + i];
-                    table.parents.entry(v).or_default().push(idx);
+        let arity = table.arity();
+        debug_assert_eq!(key.0.len(), arity);
+
+        let col = table.column_count();
+        let existing_idx = table.key_index.get(&key).copied();
+        let old_canonical = existing_idx
+            .map(|idx| self.union_find.find(table.rows[idx.0 * col + arity]));
+        let new_canonical = self.union_find.find(value);
+
+        match table.insert(&mut self.union_find, key, value) {
+            ModifyState::NewRow(idx) => {
+                let start = idx.0 * col;
+                for i in 0..col {
+                    let ty = &table.table_def.1[i];
+                    if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                        let v = table.rows[start + i];
+                        table.parents.entry(v).or_default().push(idx);
+                    }
                 }
             }
+            ModifyState::UnionRow(_) => {
+                if let Some(old) = old_canonical {
+                    if old != new_canonical {
+                        let pair = if old < new_canonical {
+                            (old, new_canonical)
+                        } else {
+                            (new_canonical, old)
+                        };
+                        self.pending_unions.push(pair);
+                    }
+                }
+            }
+            ModifyState::MergeRow(_) | ModifyState::NoModify => {}
         }
     }
 
