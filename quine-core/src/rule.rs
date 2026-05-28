@@ -71,7 +71,8 @@ impl Query {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScanStep {
     pub table: TableId,
-    pub columns: Vec<(ColumnIndex, VarId)>,
+    pub columns: Vec<ColumnIndex>,
+    pub var_binding: Vec<VarId>,
     pub constraints: Vec<Constraint>,
 }
 

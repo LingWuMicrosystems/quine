@@ -1,3 +1,5 @@
+use core::cmp::{max, min};
+
 /// related e-graph
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -7,8 +9,8 @@ use smallvec::{SmallVec, ToSmallVec};
 use rayon::prelude::*;
 
 use crate::{
-    common::{ColumnIndex, Map, RowIndex, Set, Value, VarId},
-    rule::{Action, ActionTail, Constraint, FunctionCall, Op, Query, Rule, ScanStep},
+    common::{Map, RowIndex, Set, Value, VarId},
+    rule::{Action, ActionTail, Constraint, FunctionCall, Op, Query, Rule},
     table::{ModifyState, Row, Table},
     types::{BaseType, MergeFn, TableDef, Type},
     uf::UnionFind,
@@ -66,8 +68,8 @@ impl ActionCtx<'_> {
         // Snapshot pre-insert canonicals so we can detect unions.
         let col = table.column_count();
         let existing_idx = table.key_index.get(&key).copied();
-        let old_canonical = existing_idx
-            .map(|idx| self.union_find.find(table.rows[idx.0 * col + arity]));
+        let old_canonical =
+            existing_idx.map(|idx| self.union_find.find(table.rows[idx.0 * col + arity]));
         let new_canonical = self.union_find.find(value);
 
         match table.insert(&mut self.union_find, key, value) {
@@ -231,9 +233,7 @@ impl RelatedEGraph {
 
             // New delta = rows added since snapshot,
             // unless rebuild already reset it to 0 for a full re-scan.
-            for (tid, (table, &snapshot)) in
-                self.tables.iter_mut().zip(&snapshots).enumerate()
-            {
+            for (tid, (table, &snapshot)) in self.tables.iter_mut().zip(&snapshots).enumerate() {
                 if !rebuild_affected.contains(&tid) {
                     table.delta_start_row = snapshot;
                 }
@@ -262,37 +262,34 @@ impl RelatedEGraph {
         }
 
         // Step 0: initial scan.
-        let mut rows: Vec<Row> = scan_table(
-            &self.tables,
-            &self.union_find,
-            &query.scan_steps[0],
-            delta_table,
-            &[],
-        );
-
-        let mut result_vars: Vec<VarId> = query.scan_steps[0]
-            .columns
-            .iter()
-            .map(|(_, v)| *v)
+        let step0 = &query.scan_steps[0];
+        let table = &self.tables[step0.table];
+        let mut rows: Vec<Row> = table
+            .fused_scan(
+                &self.union_find,
+                &step0.columns,
+                &step0.constraints,
+                delta_table == Some(step0.table),
+            )
             .collect();
+
+        let mut result_vars = query.scan_steps[0].var_binding.clone();
 
         // Subsequent steps: sideways information passing + hash join.
         for step in &query.scan_steps[1..] {
             let shared: Vec<(usize, usize)> = step
-                .columns
+                .var_binding
                 .iter()
                 .enumerate()
-                .filter_map(|(sp, (_, v))| {
-                    result_vars.iter().position(|rv| rv == v).map(|rp| (sp, rp))
-                })
+                .filter_map(|(sp, v)| result_vars.iter().position(|rv| rv == v).map(|rp| (sp, rp)))
                 .collect();
 
             let result_vars_set: Set<VarId> = result_vars.iter().copied().collect();
             let new_cols: Vec<usize> = step
-                .columns
+                .var_binding
                 .iter()
                 .enumerate()
-                .filter(|(_, (_, v))| !result_vars_set.contains(v))
+                .filter(|(_, v)| !result_vars_set.contains(v))
                 .map(|(i, _)| i)
                 .collect();
 
@@ -301,25 +298,37 @@ impl RelatedEGraph {
             let next_rows: Vec<Row> = if shared.len() == 1 {
                 let (sp, rp) = shared[0];
                 let distinct: Set<Value> = rows.iter().map(|r| r.0[rp]).collect();
-                let col = step.columns[sp].0;
+                let col = step.columns[sp];
                 distinct
                     .iter()
                     .flat_map(|&v| {
-                        scan_table(
-                            &self.tables,
-                            &self.union_find,
-                            step,
-                            delta_table,
-                            &[Constraint {
-                                op: Op::Equ,
-                                column: col,
-                                value: v,
-                            }],
-                        )
+                        let table = &self.tables[step.table];
+                        let mut constraints = step.constraints.clone();
+                        constraints.push(Constraint {
+                            op: Op::Equ,
+                            column: col,
+                            value: v,
+                        });
+                        table
+                            .fused_scan(
+                                &self.union_find,
+                                &step.columns,
+                                &constraints,
+                                delta_table == Some(step.table),
+                            )
+                            .collect::<Vec<_>>()
                     })
                     .collect()
             } else {
-                scan_table(&self.tables, &self.union_find, step, delta_table, &[])
+                let table = &self.tables[step.table];
+                table
+                    .fused_scan(
+                        &self.union_find,
+                        &step.columns,
+                        &step.constraints,
+                        delta_table == Some(step.table),
+                    )
+                    .collect()
             };
 
             // Hash join on shared variables.
@@ -360,7 +369,7 @@ impl RelatedEGraph {
             }
 
             for &si in &new_cols {
-                result_vars.push(step.columns[si].1);
+                result_vars.push(step.var_binding[si]);
             }
         }
 
@@ -396,8 +405,8 @@ impl RelatedEGraph {
 
         let col = table.column_count();
         let existing_idx = table.key_index.get(&key).copied();
-        let old_canonical = existing_idx
-            .map(|idx| self.union_find.find(table.rows[idx.0 * col + arity]));
+        let old_canonical =
+            existing_idx.map(|idx| self.union_find.find(table.rows[idx.0 * col + arity]));
         let new_canonical = self.union_find.find(value);
 
         match table.insert(&mut self.union_find, key, value) {
@@ -468,22 +477,10 @@ impl RelatedEGraph {
                                 let value_ref =
                                     &mut self.tables[tid].rows[existing_idx.0 * column + arity];
                                 let resolved = match merge_fn {
-                                    MergeFn::Min => {
-                                        if *new < *old {
-                                            *new
-                                        } else {
-                                            *old
-                                        }
-                                    }
-                                    MergeFn::Max => {
-                                        if *new > *old {
-                                            *new
-                                        } else {
-                                            *old
-                                        }
-                                    }
+                                    MergeFn::Min => min(new, old),
+                                    MergeFn::Max => max(new, old),
                                 };
-                                *value_ref = resolved;
+                                *value_ref = *resolved;
                             }
                             Vec::new()
                         }
@@ -534,23 +531,6 @@ impl RelatedEGraph {
     pub fn get_table(&self, tid: TableId) -> &Table {
         &self.tables[tid]
     }
-}
-
-fn scan_table(
-    tables: &[Table],
-    uf: &UnionFind,
-    step: &ScanStep,
-    delta_table: Option<TableId>,
-    extra_constraints: &[Constraint],
-) -> Vec<Row> {
-    let table = &tables[step.table];
-    let col_indices: Vec<ColumnIndex> = step.columns.iter().map(|(c, _)| *c).collect();
-    let use_delta = delta_table == Some(step.table) && table.has_delta();
-    let mut constraints = step.constraints.clone();
-    constraints.extend_from_slice(extra_constraints);
-    table
-        .fused_scan(uf, &col_indices, &constraints, use_delta)
-        .collect()
 }
 
 fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(RowIndex, Value, Value)> {
