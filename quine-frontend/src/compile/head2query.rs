@@ -180,7 +180,7 @@ pub fn heads2query(
         if let Some(step_indices) = ctx.var_to_steps.get(&var) {
             for &step_idx in step_indices {
                 let step = &mut ctx.scan_steps[step_idx];
-                if let Some((col, _)) = step.columns.iter().find(|(_, v)| *v == var) {
+                if let Some((col, _)) = step.columns.iter().zip(&step.var_binding).find(|(_, v)| **v == var) {
                     for &(op, value) in &cmps {
                         step.constraints.push(Constraint {
                             op,
@@ -225,6 +225,7 @@ fn check_and_compile_con_pattern(
     ctx.scan_steps.push(ScanStep {
         table: table_id,
         columns: Vec::new(),
+        var_binding: Vec::new(),
         constraints: Vec::new(),
     });
 
@@ -233,7 +234,8 @@ fn check_and_compile_con_pattern(
         if let Some(var) = check_and_compile_pattern(ctx, pattern, ty, Some(ColumnIndex(col)))? {
             ctx.scan_steps[step_idx]
                 .columns
-                .push((ColumnIndex(col), var));
+                .push(ColumnIndex(col));
+            ctx.scan_steps[step_idx].var_binding.push(var);
             ctx.var_to_steps.entry(var).or_default().push(step_idx);
         }
     }
@@ -246,7 +248,8 @@ fn check_and_compile_con_pattern(
             .map(Type::Name)
             .unwrap_or_else(|| table.1[arity].clone());
         let res = ctx.variables.insert_var(None, result_ty);
-        ctx.scan_steps[step_idx].columns.push((result_col, res));
+        ctx.scan_steps[step_idx].columns.push(result_col);
+        ctx.scan_steps[step_idx].var_binding.push(res);
         ctx.var_to_steps.entry(res).or_default().push(step_idx);
         ctx.current_step = prev_step;
         Ok(Some(res))
