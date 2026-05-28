@@ -527,10 +527,7 @@ dependencies = [
  "pest_derive",
  "quine-core",
  "quine-frontend",
- "rayon",
  "reedline",
- "rustc-hash",
- "smallvec",
 ]
 
 [[package]]
