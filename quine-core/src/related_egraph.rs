@@ -42,6 +42,9 @@ pub struct RelatedEGraph {
     ruleset: Vec<Rule>,
     rule_deps: Map<TableId, Vec<RuleId>>,
     pub rule_groups: Map<GroupName, RuleGroup>,
+    
+    // any canonical eclass -> all enode references of it
+    reverse_index: Map<Value, Set<(TableId, RowIndex)>>
 }
 
 /// Mutable state needed exclusively by action application.
@@ -51,6 +54,9 @@ struct ActionCtx<'a> {
     union_find: &'a mut UnionFind,
     pending_unions: &'a mut Vec<(Value, Value)>,
     native_functions: &'a [NativeFn],
+
+    // any canonical eclass -> all enode references of it
+    reverse_index: &'a mut Map<Value, Set<(TableId, RowIndex)>>
 }
 
 impl ActionCtx<'_> {
@@ -81,6 +87,15 @@ impl ActionCtx<'_> {
                         let v = table.rows[start + i];
                         table.parents.entry(v).or_default().push(idx);
                     }
+                }
+                // Track enode reference: value column -> reverse_index
+                let value_type = &table.table_def.1[arity];
+                if matches!(value_type, Type::Name(_) | Type::Base(BaseType::Id)) {
+                    let canonical = self.union_find.find(value);
+                    self.reverse_index
+                        .entry(canonical)
+                        .or_default()
+                        .insert((table_id, idx));
                 }
             }
             ModifyState::UnionRow(_) => {
@@ -225,6 +240,7 @@ impl RelatedEGraph {
                     union_find: &mut self.union_find,
                     pending_unions: &mut self.pending_unions,
                     native_functions: &self.native_functions,
+                    reverse_index: &mut self.reverse_index,
                 };
                 ctx.apply_action(action, rows);
             }
@@ -252,6 +268,7 @@ impl RelatedEGraph {
             union_find: &mut self.union_find,
             pending_unions: &mut self.pending_unions,
             native_functions: &self.native_functions,
+            reverse_index: &mut self.reverse_index,
         };
         ctx.apply_action(action, rows);
     }
@@ -419,6 +436,15 @@ impl RelatedEGraph {
                         table.parents.entry(v).or_default().push(idx);
                     }
                 }
+                // Track enode reference: value column -> reverse_index
+                let value_type = &table.table_def.1[arity];
+                if matches!(value_type, Type::Name(_) | Type::Base(BaseType::Id)) {
+                    let canonical = self.union_find.find(value);
+                    self.reverse_index
+                        .entry(canonical)
+                        .or_default()
+                        .insert((table_id, idx));
+                }
             }
             ModifyState::UnionRow(_) => {
                 if let Some(old) = old_canonical {
@@ -437,8 +463,15 @@ impl RelatedEGraph {
     }
 
     pub fn union(&mut self, old: Value, new: Value) {
-        if let Some(r) = self.union_find.union(old, new) {
-            self.pending_unions.push(r);
+        if let Some((parent, child)) = self.union_find.union(old, new) {
+            // Merge reverse_index: child's enode refs move to parent.
+            if let Some(child_entries) = self.reverse_index.remove(&child) {
+                self.reverse_index
+                    .entry(parent)
+                    .or_default()
+                    .extend(child_entries);
+            }
+            self.pending_unions.push((parent, child));
         }
     }
 
@@ -451,18 +484,37 @@ impl RelatedEGraph {
                     continue;
                 };
 
+                // Preserve scanned_idx so we can remove merged rows from reverse_index.
                 let pairs: Vec<_> = indices
                     .iter()
-                    .flat_map(|&idx| rebuild_row(table, idx, &self.union_find))
+                    .filter_map(|&idx| {
+                        rebuild_row(table, idx, &self.union_find).map(|r| (idx, r))
+                    })
                     .collect();
 
                 if !pairs.is_empty() {
+                    // Remove absorbed rows from reverse_index before unions change canonicals.
+                    {
+                        let arity = self.tables[tid].arity();
+                        let value_type = &self.tables[tid].table_def.1[arity];
+                        if matches!(value_type, Type::Name(_) | Type::Base(BaseType::Id)) {
+                            for (scanned_idx, (_existing_idx, _old, new)) in &pairs {
+                                let canonical = self.union_find.find(*new);
+                                self.reverse_index
+                                    .entry(canonical)
+                                    .and_modify(|s| {
+                                        s.remove(&(tid, *scanned_idx));
+                                    });
+                            }
+                        }
+                    }
+
                     // Track minimum affected row index so we only
                     // rescan from that point, not the whole table.
                     let min_idx = indices
                         .iter()
                         .map(|i| i.0)
-                        .chain(pairs.iter().map(|(i, _, _)| i.0))
+                        .chain(pairs.iter().map(|(_, (i, _, _))| i.0))
                         .min()
                         .unwrap_or(0);
                     let entry = affected.entry(tid).or_insert(usize::MAX);
@@ -471,7 +523,7 @@ impl RelatedEGraph {
                     let merge = self.tables[tid].table_def.2;
                     let new_pairs: Vec<_> = match merge {
                         Some(merge_fn) => {
-                            for (existing_idx, old, new) in &pairs {
+                            for (_scanned_idx, (existing_idx, old, new)) in &pairs {
                                 let column = self.tables[tid].column_count();
                                 let arity = self.tables[tid].arity();
                                 let value_ref =
@@ -486,7 +538,24 @@ impl RelatedEGraph {
                         }
                         None => pairs
                             .into_iter()
-                            .flat_map(|(_, old, new)| self.union_find.union(old, new))
+                            .flat_map(|(_scanned_idx, (_existing_idx, old, new))| {
+                                if let Some((parent, child)) =
+                                    self.union_find.union(old, new)
+                                {
+                                    // Merge reverse_index: child's enode refs move to parent.
+                                    if let Some(child_entries) =
+                                        self.reverse_index.remove(&child)
+                                    {
+                                        self.reverse_index
+                                            .entry(parent)
+                                            .or_default()
+                                            .extend(child_entries);
+                                    }
+                                    Some((parent, child))
+                                } else {
+                                    None
+                                }
+                            })
                             .collect(),
                     };
                     self.pending_unions.extend(new_pairs);
@@ -530,6 +599,23 @@ impl RelatedEGraph {
 
     pub fn get_table(&self, tid: TableId) -> &Table {
         &self.tables[tid]
+    }
+
+    /// Allocate a fresh eclass ID registered with the union-find.
+    pub fn fresh_id(&mut self) -> Value {
+        let id = Value(self.union_find.parents.len() as u64);
+        self.union_find.add(id);
+        id
+    }
+
+    // canonicalize the eclass value
+    // and then returns all the enodes of it
+    pub fn eclass_enodes(&self, eclass: Value) -> Set<(TableId, RowIndex)> {
+        let canonical = self.union_find.find(eclass);
+        self.reverse_index
+            .get(&canonical)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
