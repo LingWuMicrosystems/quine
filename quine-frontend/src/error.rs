@@ -20,4 +20,5 @@ pub enum CompileError {
     MergeOnNonNumeric(String),
     MergeRequired(String),
     UnknownConstructor(String, String),
+    VariableInExtract(String),
 }

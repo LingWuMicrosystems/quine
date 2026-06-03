@@ -23,4 +23,8 @@ impl Interner {
     pub fn lookup(&self, id: u32) -> Option<&str> {
         self.backward.get(&id).map(|s| s.as_str())
     }
+
+    pub fn max_id(&self) -> u32 {
+        self.next_id
+    }
 }

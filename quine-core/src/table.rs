@@ -74,6 +74,11 @@ impl Table {
         self.delta_start_row < self.row_count
     }
 
+    /// Look up a row index by its key columns. Returns None if not found.
+    pub fn get_by_key(&self, key: &Row) -> Option<RowIndex> {
+        self.key_index.get(key).copied()
+    }
+
     /// Inserts a row. Returns `Some(row_index)` if a new row was added,
     /// `None` if an existing row was updated.
     pub fn insert(&mut self, uf: &mut UnionFind, mut key: Row, value: Value) -> ModifyState {

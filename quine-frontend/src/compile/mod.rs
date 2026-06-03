@@ -13,7 +13,7 @@ use crate::compile::head2query::heads2query;
 use crate::env::{CompileEnv, TableEnv};
 use crate::error::CompileError;
 use crate::interner::Interner;
-use crate::syntax::{self, Atom, Bodys, Command};
+use crate::syntax::{self, Atom, AtomOrVariable, Bodys, Command, Expr, VarExtractor};
 use crate::{CompiledUnit, NativeSignature};
 
 pub fn unify(t1: &Type, t2: &Type) -> Result<(), CompileError> {
@@ -101,6 +101,13 @@ pub fn compile_command(
             Ok(CompiledUnit::CostDef(def.clone()))
         }
         Command::Extract(expr) => {
+            // Validate: no variables allowed in extract expressions
+            let vars = expr.extract_vars();
+            if let Some(var) = vars.iter().next() {
+                return Err(CompileError::VariableInExtract(var.clone()));
+            }
+            // Validate: constructors referenced in the expression exist
+            validate_extract_expr(expr, table_types, data_types)?;
             Ok(CompiledUnit::Extract(expr.clone()))
         }
         Command::Run(run) => Ok(CompiledUnit::Run(run.clone())),
@@ -176,5 +183,38 @@ pub fn atom_to_value(atom: Atom, interner: &mut Interner) -> Value {
         Atom::Bool(b) => Value(if b { 1u64 } else { 0u64 }),
         Atom::F32(bits) => Value::encode_f32(f32::from_bits(bits)),
         Atom::F64(bits) => Value::encode_f64(f64::from_bits(bits)),
+    }
+}
+
+/// Recursively validate that all constructor names in an extract expression
+/// exist in table_types or data_types.
+fn validate_extract_expr(
+    expr: &Expr,
+    table_types: &TableEnv,
+    data_types: &CompileEnv,
+) -> Result<(), CompileError> {
+    match expr {
+        Expr::AtomOrVariable(AtomOrVariable::Variable(name)) => {
+            Err(CompileError::VariableInExtract(name.clone()))
+        }
+        Expr::AtomOrVariable(AtomOrVariable::Atom(_)) => Ok(()),
+        Expr::FunctionCall(call) => {
+            // Try direct table lookup first
+            if table_types.name_map.contains_key(&call.0) {
+                // Direct table name match — valid
+            } else if data_types.cons2type_map.keys().any(|k| k.ends_with(&format!(".{}", call.0))) {
+                // Constructor name found in cons2type_map — valid
+            } else {
+                return Err(CompileError::UnknownConstructor(
+                    call.0.clone(),
+                    call.0.clone(),
+                ));
+            }
+            // Recursively validate arguments
+            for arg in call.1.iter() {
+                validate_extract_expr(arg, table_types, data_types)?;
+            }
+            Ok(())
+        }
     }
 }

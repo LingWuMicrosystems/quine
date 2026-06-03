@@ -99,6 +99,22 @@ fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), Str
         print_query_result(&var_record, rows, ctx);
         return Ok(());
     }
+    if let Command::Extract(_) = &cmd {
+        let unit = compile_command(
+            &cmd,
+            &mut ctx.data_types,
+            &mut ctx.table_types,
+            &mut ctx.interner,
+            &ctx.native_names,
+            &ctx.native_signatures,
+        )
+        .map_err(|e| format!("{:?}", e))?;
+        ctx.apply(unit);
+        if let Some(ref term) = ctx.last_extract {
+            println!("{term}");
+        }
+        return Ok(());
+    }
     let unit = compile_command(
         &cmd,
         &mut ctx.data_types,
@@ -121,6 +137,21 @@ fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<
                         .map_err(|e| format!("{:?}", e))?;
                 let (var_record, rows) = ctx.query(&query, &vars);
                 print_query_result(&var_record, rows, ctx);
+            }
+            Command::Extract(_) => {
+                let unit = compile_command(
+                    &cmd,
+                    &mut ctx.data_types,
+                    &mut ctx.table_types,
+                    &mut ctx.interner,
+                    &ctx.native_names,
+                    &ctx.native_signatures,
+                )
+                .map_err(|e| format!("{:?}", e))?;
+                ctx.apply(unit);
+                if let Some(ref term) = ctx.last_extract {
+                    println!("{term}");
+                }
             }
             _ => {
                 let unit = compile_command(

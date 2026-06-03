@@ -65,6 +65,7 @@ rule edge(x, y) { set path(x, y) }
 | 02 — Cost + Extraction Syntax | ✅ Complete | 2026-06-03 |
 | 03 — Cost Analysis (lattice, incremental computation) | ✅ Complete | 2026-06-03 |
 | 04 — Change Extraction Syntax (extract \<expr\>) | ✅ Complete | 2026-06-03 |
+| 05 — Expression Extraction (cost-aware evaluation) | ✅ Complete | 2026-06-03 |
 
 ---
-*Last updated: 2026-06-03 after Phase 04*
+*Last updated: 2026-06-03 after Phase 05*
