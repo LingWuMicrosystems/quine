@@ -302,10 +302,8 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
         }
         Rule::cost_def => Command::CostDef(parse_cost_def(inner)),
         Rule::extract_query => {
-            let mut parts = inner.into_inner();
-            let heads = parse_heads(parts.next().unwrap());
-            let vars: Vec<_> = parts.map(|p| parse_variable(p)).collect();
-            Command::Extract(heads, vars)
+            let expr = parse_expr(inner.into_inner().next().unwrap());
+            Command::Extract(expr)
         }
         _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),
     }

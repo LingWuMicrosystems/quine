@@ -100,9 +100,8 @@ pub fn compile_command(
             }
             Ok(CompiledUnit::CostDef(def.clone()))
         }
-        Command::Extract(heads, vars) => {
-            let query = heads2query(heads, table_types, data_types, interner)?;
-            Ok(CompiledUnit::Extract(query, vars.clone()))
+        Command::Extract(expr) => {
+            Ok(CompiledUnit::Extract(expr.clone()))
         }
         Command::Run(run) => Ok(CompiledUnit::Run(run.clone())),
     }

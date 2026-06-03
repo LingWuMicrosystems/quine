@@ -34,7 +34,7 @@ pub enum Command {
     Query(Heads, Vec<String>),
     Run(Run),
     CostDef(CostDef),
-    Extract(Heads, Vec<String>),
+    Extract(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -330,23 +330,7 @@ impl Display for Command {
             }
             Command::Run(..) => write!(f, "run"),
             Command::CostDef(def) => write!(f, "{def}"),
-            Command::Extract(heads, vars) => {
-                write!(f, "extract ")?;
-                for (idx, head) in heads.iter().enumerate() {
-                    if idx != 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{head}")?;
-                }
-                write!(f, " print(")?;
-                for (idx, v) in vars.iter().enumerate() {
-                    if idx != 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{v}")?;
-                }
-                write!(f, ")")
-            }
+            Command::Extract(expr) => write!(f, "extract {expr}"),
         }
     }
 }

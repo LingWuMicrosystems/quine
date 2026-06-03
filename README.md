@@ -98,11 +98,11 @@ Costs are maintained eagerly at every insert and union operation. The cheapest e
 ### Extract
 
 ```
-extract expr(x) print(x)
-extract path(x, y), if x > 0i32 print(x, y)
+extract Expr.Add(Expr.Const(0i32), Expr.Const(4i32))
+extract 42i32
 ```
 
-Extract the lowest-cost expression matching the pattern from the e-graph, using defined cost models to compare equivalent expressions. Supports the same pattern syntax as `query` (constructor patterns, guards, leteq). The `print(...)` clause specifies which matched variables to output.
+Extract the lowest-cost expression equivalent to the given value from the e-graph. Provide a concrete expression (constructor calls with literal arguments), and the system uses defined cost models to find and return the cheapest equivalent form.
 
 ### Run
 

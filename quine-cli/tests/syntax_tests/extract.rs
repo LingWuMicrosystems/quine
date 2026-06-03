@@ -2,6 +2,7 @@ use quine::pest_parser::parse_file;
 use quine_frontend::compile::compile_command;
 use quine_frontend::prelude::register_prelude;
 use quine_frontend::syntax::Command;
+use quine_frontend::syntax::{Atom, AtomOrVariable};
 use quine_frontend::{CompiledUnit, EngineContext};
 
 fn make_ctx() -> EngineContext {
@@ -11,125 +12,107 @@ fn make_ctx() -> EngineContext {
 }
 
 // ============================================================================
-// AC-1: Simple extract parses
+// AC-1: Parse `extract <expr>` with nested constructor calls
 // ============================================================================
 
-/// Parse a simple extract query.
+/// Parse an extract with nested constructor calls (no pattern variables).
+///
+/// Given: `extract Expr.Add(Expr.Const(0i32), Expr.Const(4i32))`
+/// When:  parsed
+/// Then:  Command::Extract with a FunctionCall tree
+#[test]
+fn ac1_extract_nested_expr_parses() {
+    let input = "extract Expr.Add(Expr.Const(0i32), Expr.Const(4i32))\n";
+    let commands = parse_file(input).unwrap();
+    assert_eq!(commands.len(), 1);
+    match &commands[0] {
+        Command::Extract(expr) => {
+            // Verify it's a FunctionCall with two args
+            match expr {
+                quine_frontend::syntax::Expr::FunctionCall(call) => {
+                    assert_eq!(call.0, "Expr.Add");
+                    assert_eq!(call.1.len(), 2);
+                }
+                other => panic!("expected FunctionCall, got {:?}", other),
+            }
+        }
+        other => panic!("expected Extract, got {:?}", other),
+    }
+}
+
+// ============================================================================
+// AC-2: Old syntax `extract <pattern> print(<vars>)` is rejected
+// ============================================================================
+
+/// Old pattern+print syntax is no longer valid.
 ///
 /// Given: `extract expr(x) print(x)`
 /// When:  parsed
-/// Then:  Command::Extract with 1 head and 1 print var
-#[test]
-fn ac1_extract_simple_parses() {
-    let input = "extract expr(x) print(x)\n";
-    let commands = parse_file(input).unwrap();
-    assert_eq!(commands.len(), 1);
-    match &commands[0] {
-        Command::Extract(heads, vars) => {
-            assert_eq!(heads.len(), 1);
-            assert_eq!(vars.len(), 1);
-            assert_eq!(&vars[0], "x");
-        }
-        other => panic!("expected Extract, got {:?}", other),
-    }
-}
-
-// ============================================================================
-// AC-2: Extract with guard parses
-// ============================================================================
-
-/// Parse extract with guard and multiple print vars.
-///
-/// Given: `extract path(x, y), if x > 0i32 print(x, y)`
-/// When:  parsed
-/// Then:  Command::Extract with 2 heads and 2 print vars
-#[test]
-fn ac2_extract_with_guard_parses() {
-    let input = "extract path(x, y), if x > 0i32 print(x, y)\n";
-    let commands = parse_file(input).unwrap();
-    assert_eq!(commands.len(), 1);
-    match &commands[0] {
-        Command::Extract(heads, vars) => {
-            assert_eq!(heads.len(), 2);
-            assert_eq!(vars.len(), 2);
-            assert_eq!(&vars[0], "x");
-            assert_eq!(&vars[1], "y");
-        }
-        other => panic!("expected Extract, got {:?}", other),
-    }
-}
-
-// ============================================================================
-// AC-3: Extract with leteq parses
-// ============================================================================
-
-/// Parse extract with leteq unification.
-///
-/// Given: `extract node(x), leteq x = y print(y)`
-/// When:  parsed
-/// Then:  Command::Extract with 2 heads
-#[test]
-fn ac3_extract_with_leteq_parses() {
-    let input = "extract node(x), leteq x = y print(y)\n";
-    let commands = parse_file(input).unwrap();
-    assert_eq!(commands.len(), 1);
-    match &commands[0] {
-        Command::Extract(heads, vars) => {
-            assert_eq!(heads.len(), 2);
-            assert_eq!(vars.len(), 1);
-        }
-        other => panic!("expected Extract, got {:?}", other),
-    }
-}
-
-// ============================================================================
-// AC-4: Extract with no print vars
-// ============================================================================
-
-/// Empty print() is rejected — grammar requires at least one variable.
-///
-/// Given: `extract expr(x) print()`
-/// When:  parsed
 /// Then:  parse_file returns an Err
 #[test]
-fn ac4_extract_empty_print_rejected() {
-    let input = "extract expr(x) print()\n";
+fn ac2_old_syntax_rejected() {
+    let input = "extract expr(x) print(x)\n";
     let result = parse_file(input);
-    assert!(result.is_err(), "empty print() should be rejected");
+    assert!(result.is_err(), "old syntax should be rejected");
 }
 
 // ============================================================================
-// AC-5: Display round-trip for Extract
+// AC-3: Atom literal in extract
 // ============================================================================
 
-/// Extract Display output is consistent.
+/// Parse an extract with a literal atom.
 ///
-/// Given: a parsed Extract command
-/// When:  Display::fmt is called
-/// Then:  output follows the same format as query (constructor args space-separated)
+/// Given: `extract 42i32`
+/// When:  parsed
+/// Then:  Command::Extract with AtomOrVariable::Atom(I32(42))
 #[test]
-fn ac5_extract_display_consistent() {
-    let input = "extract expr(x) print(x)\n";
+fn ac3_extract_atom_literal() {
+    let input = "extract 42i32\n";
+    let commands = parse_file(input).unwrap();
+    assert_eq!(commands.len(), 1);
+    match &commands[0] {
+        Command::Extract(expr) => {
+            match expr {
+                quine_frontend::syntax::Expr::AtomOrVariable(AtomOrVariable::Atom(Atom::I32(42))) => {}
+                other => panic!("expected AtomOrVariable::Atom(I32(42)), got {:?}", other),
+            }
+        }
+        other => panic!("expected Extract, got {:?}", other),
+    }
+}
+
+// ============================================================================
+// AC-4: Display round-trip for Extract
+// ============================================================================
+
+/// Extract Display output uses the s-expression format.
+///
+/// Given: a parsed Extract command with a nested expr
+/// When:  Display::fmt is called
+/// Then:  output starts with "extract " and contains the constructor names
+#[test]
+fn ac4_extract_display_consistent() {
+    let input = "extract Expr.Add(Expr.Const(0i32), Expr.Const(4i32))\n";
     let commands = parse_file(input).unwrap();
     let display = format!("{}", commands[0]);
-    // Display uses space-separated args (no parens), matching query's Display format
+    // Display uses s-expression format (space-separated, paren-wrapped)
     assert!(display.starts_with("extract "));
-    assert!(display.contains("print(x)"));
-    assert!(display.contains("expr"));
+    assert!(display.contains("Expr.Add"));
+    assert!(display.contains("Expr.Const"));
 }
 
 // ============================================================================
-// AC-6: Extract compiles to CompiledUnit::Extract
+// AC-5: Extract compiles to CompiledUnit::Extract
 // ============================================================================
 
-/// Full parse -> compile produces CompiledUnit::Extract.
+/// Full parse -> compile produces CompiledUnit::Extract with an Expr.
 ///
-/// Given: data Expr = Add(x, y) | Const(v) and extract Expr.Add(x, y) print(x, y)
+/// Given: data Expr = Add(x, y) | Const(v) and extract Expr.Add(Expr.Const(0i32), Expr.Const(4i32))
 /// When:  parsed and compiled
-/// Then:  CompiledUnit::Extract with correct query and vars
+/// Then:  CompiledUnit::Extract with correct Expr
 #[test]
-fn ac6_extract_compiles() {
-    let input = "data Expr = Add(x, y) | Const(v)\nextract Expr.Add(x, y) print(x, y)\n";
+fn ac5_extract_compiles() {
+    let input = "data Expr = Add(x, y) | Const(v)\nextract Expr.Add(Expr.Const(0i32), Expr.Const(4i32))\n";
     let commands = parse_file(input).unwrap();
     assert_eq!(commands.len(), 2);
 
@@ -158,12 +141,43 @@ fn ac6_extract_compiles() {
     .unwrap();
 
     match unit {
-        CompiledUnit::Extract(query, vars) => {
-            assert_eq!(vars.len(), 2);
-            assert_eq!(vars[0], "x");
-            assert_eq!(vars[1], "y");
-            assert_eq!(query.scan_steps.len(), 1);
+        CompiledUnit::Extract(expr) => {
+            // Verify it's the expected Expr structure
+            match expr {
+                quine_frontend::syntax::Expr::FunctionCall(call) => {
+                    assert_eq!(call.0, "Expr.Add");
+                    assert_eq!(call.1.len(), 2);
+                }
+                other => panic!("expected FunctionCall, got {:?}", other),
+            }
         }
         other => panic!("expected CompiledUnit::Extract, got {:?}", other),
+    }
+}
+
+// ============================================================================
+// AC-6: Bare variable name in extract
+// ============================================================================
+
+/// Parse extract with a bare variable name (no parens, no args).
+///
+/// Given: `extract x`
+/// When:  parsed
+/// Then:  Command::Extract with AtomOrVariable::Variable("x")
+#[test]
+fn ac6_extract_variable_name() {
+    let input = "extract x\n";
+    let commands = parse_file(input).unwrap();
+    assert_eq!(commands.len(), 1);
+    match &commands[0] {
+        Command::Extract(expr) => {
+            match expr {
+                quine_frontend::syntax::Expr::AtomOrVariable(AtomOrVariable::Variable(v)) => {
+                    assert_eq!(v, "x");
+                }
+                other => panic!("expected Variable(\"x\"), got {:?}", other),
+            }
+        }
+        other => panic!("expected Extract, got {:?}", other),
     }
 }

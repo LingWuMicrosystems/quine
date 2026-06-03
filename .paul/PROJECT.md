@@ -39,6 +39,7 @@ Rust workspace with three crates:
 | 7 | Cost lattice `(u64, min, u64::MAX)` with `saturating_add` — costs decrease monotonically | Models cost as a fixpoint; cheaper equivalent expressions lower eclass cost; saturating_add propagates unknown (⊥) | 03 |
 | 8 | ActionCtx::union performs eager cost merge (not deferred to rebuild) | Consistency with reverse_index merging pattern; ensures cost state stays synchronized across all union paths | 03 |
 | 9 | cost_models moved from EngineContext to RelatedEGraph | Costs are an e-graph concern; RelatedEGraph owns both the data and the computation | 03 |
+| 10 | Extract syntax changed to `extract <expr>` (concrete values, not patterns) | Extraction needs a concrete expression to find in the e-graph; pattern matching unnecessary | 04 |
 
 ## DSL Syntax
 
@@ -63,6 +64,7 @@ rule edge(x, y) { set path(x, y) }
 | 01 — Core Engine (reverse_index, eclass_enodes) | ✅ Complete | 2026-06-02 |
 | 02 — Cost + Extraction Syntax | ✅ Complete | 2026-06-03 |
 | 03 — Cost Analysis (lattice, incremental computation) | ✅ Complete | 2026-06-03 |
+| 04 — Change Extraction Syntax (extract \<expr\>) | ✅ Complete | 2026-06-03 |
 
 ---
-*Last updated: 2026-06-03 after Phase 03*
+*Last updated: 2026-06-03 after Phase 04*

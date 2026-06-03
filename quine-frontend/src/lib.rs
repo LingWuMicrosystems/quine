@@ -24,7 +24,7 @@ use quine_core::types::*;
 
 use crate::env::{CompileEnv, TableEnv};
 use crate::interner::Interner;
-use crate::syntax::{Atom, CostDef};
+use crate::syntax::{Atom, CostDef, Expr};
 use crate::term::Term;
 
 #[derive(Debug, Clone)]
@@ -40,7 +40,7 @@ pub enum CompiledUnit {
     Action(rule::Action),
     Run(Run),
     CostDef(CostDef),
-    Extract(rule::Query, Vec<String>),
+    Extract(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -84,8 +84,8 @@ impl EngineContext {
                 let key = format!("{}.{}", def.type_name, def.constructor);
                 self.regraph.set_cost_model(key, def.cost);
             }
-            CompiledUnit::Extract(_query, _vars) => {
-                // Phase 4 will implement cost-aware extraction
+            CompiledUnit::Extract(_expr) => {
+                // Phase 5 will implement cost-aware extraction
             }
         }
     }
