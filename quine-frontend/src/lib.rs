@@ -15,7 +15,8 @@ use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use quine_core::common::{Map, Set, Value};
+use quine_core::common::{Map, RowIndex, Set, Value};
+use quine_core::related_egraph::TableId;
 use quine_core::related_egraph::{GroupName, NativeFn, RelatedEGraph, RunMode};
 use quine_core::rule::{self, Query, VariableRecord};
 use quine_core::table::Row;
@@ -60,7 +61,6 @@ pub struct EngineContext {
     pub regraph: RelatedEGraph,
     pub native_names: Map<String, usize>,
     pub native_signatures: Map<String, NativeSignature>,
-    pub cost_models: Map<String, u64>,
 }
 
 impl EngineContext {
@@ -82,7 +82,7 @@ impl EngineContext {
             }
             CompiledUnit::CostDef(def) => {
                 let key = format!("{}.{}", def.type_name, def.constructor);
-                self.cost_models.insert(key, def.cost);
+                self.regraph.set_cost_model(key, def.cost);
             }
             CompiledUnit::Extract(_query, _vars) => {
                 // Phase 4 will implement cost-aware extraction
@@ -164,6 +164,22 @@ impl EngineContext {
 
     pub fn native_offset(&self, name: &str) -> Option<usize> {
         self.native_names.get(name).copied()
+    }
+
+    /// Look up the cost of a constructor. Returns 0 if not defined.
+    pub fn constructor_cost(&self, type_name: &str, constructor: &str) -> u64 {
+        let key = format!("{}.{}", type_name, constructor);
+        self.regraph.get_constructor_cost(&key)
+    }
+
+    /// Get the current minimum cost of an eclass. Returns u64::MAX if unknown.
+    pub fn eclass_cost(&self, eclass: Value) -> u64 {
+        self.regraph.eclass_cost(eclass)
+    }
+
+    /// Get the cheapest enode for an eclass, if any.
+    pub fn cost_select(&self, eclass: Value) -> Option<(TableId, RowIndex)> {
+        self.regraph.cost_select(eclass)
     }
 
     pub fn extract(&self, id: Value, ty: &Type) -> Term {

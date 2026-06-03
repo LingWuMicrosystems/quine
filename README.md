@@ -82,6 +82,19 @@ cost Expr.Mul = 2
 
 Define integer costs for data type constructors. The cost of an expression is the sum of costs of all constructors in the tree. Constructors without a defined cost default to 0. Only data type constructors (`TypeName.ConstructorName`) can have costs; relations and functions cannot.
 
+### Cost Analysis
+
+Expression costs are computed incrementally during e-graph saturation using a lattice fixpoint:
+
+```
+Lattice: (u64, min, u64::MAX)
+- Each eclass has a current minimum cost, starting at u64::MAX (unknown)
+- Costs monotonically decrease as cheaper equivalent expressions are discovered
+- Join operation = min (the cheaper of two equivalent expressions)
+```
+
+Costs are maintained eagerly at every insert and union operation. The cheapest enode for each eclass is tracked so extraction can select the lowest-cost expression.
+
 ### Extract
 
 ```

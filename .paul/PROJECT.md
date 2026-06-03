@@ -24,6 +24,7 @@ Rust workspace with three crates:
 - **Types:** [`types.rs`](quine-core/src/types.rs) — algebraic data types (`data Option = Some(value) \| None`)
 - **Union-Find:** [`uf.rs`](quine-core/src/uf.rs) — union-find for equivalence classes
 - **Reverse Index:** [`related_egraph.rs`](quine-core/src/related_egraph.rs) — `reverse_index` maps canonical eclass → set of `(table_id, row_index)` enode references, maintained through insert/union/rebuild. Query via `eclass_enodes(eclass)`.
+- **Cost Analysis:** [`related_egraph.rs`](quine-core/src/related_egraph.rs) — incremental cost computation via lattice fixpoint `(u64, min, u64::MAX)`. `eclass_cost` tracks minimum cost per eclass; `cost_select` maps eclass → cheapest enode. Costs maintained eagerly at insert/union/rebuild. Cost models stored as `Map<String, u64>` on `RelatedEGraph`.
 
 ## Key Decisions
 
@@ -35,6 +36,9 @@ Rust workspace with three crates:
 | 4 | Cost syntax uses flat `u64` per constructor: `cost TypeName.ConsName = <int>` | Simpler than expression-based costs; sufficient for cost-as-sum model | 02 |
 | 5 | `EngineContext.cost_models: Map<String, u64>` stores costs, defaulting to 0 | Central location accessible by compilation and future analysis phases | 02 |
 | 6 | Dotted names (`Option.Some`) parsed as single Pest variable, split at parser level | `.` is valid in Pest `variable_char`; splitting in parser avoids grammar complexity | 02 |
+| 7 | Cost lattice `(u64, min, u64::MAX)` with `saturating_add` — costs decrease monotonically | Models cost as a fixpoint; cheaper equivalent expressions lower eclass cost; saturating_add propagates unknown (⊥) | 03 |
+| 8 | ActionCtx::union performs eager cost merge (not deferred to rebuild) | Consistency with reverse_index merging pattern; ensures cost state stays synchronized across all union paths | 03 |
+| 9 | cost_models moved from EngineContext to RelatedEGraph | Costs are an e-graph concern; RelatedEGraph owns both the data and the computation | 03 |
 
 ## DSL Syntax
 
@@ -58,6 +62,7 @@ rule edge(x, y) { set path(x, y) }
 |-------|--------|-----------|
 | 01 — Core Engine (reverse_index, eclass_enodes) | ✅ Complete | 2026-06-02 |
 | 02 — Cost + Extraction Syntax | ✅ Complete | 2026-06-03 |
+| 03 — Cost Analysis (lattice, incremental computation) | ✅ Complete | 2026-06-03 |
 
 ---
-*Last updated: 2026-06-03 after Phase 02*
+*Last updated: 2026-06-03 after Phase 03*

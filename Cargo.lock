@@ -528,6 +528,7 @@ dependencies = [
  "quine-core",
  "quine-frontend",
  "reedline",
+ "smallvec",
 ]
 
 [[package]]
