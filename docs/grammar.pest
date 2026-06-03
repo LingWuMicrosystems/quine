@@ -1,6 +1,6 @@
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
-KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "run" | "saturate" | "repeat" | "merge" | "min" | "max" | "=" | op | "{" | "}" | ";" }
+KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "run" | "saturate" | "repeat" | "merge" | "min" | "max" | "extract" | "=" | op | "{" | "}" | ";" }
 
 TOP_LEVEL = {
     command*
@@ -14,6 +14,8 @@ command = {
   | rule
   | query
   | run
+  | cost_def
+  | extract_query
 }
 
 run = { "run" ~ run_item }
@@ -31,6 +33,10 @@ rule = {
 fact = { "fact" ~ bodies }
 
 query = { "query" ~ heads ~ "print" ~ "(" ~ variable ~ ("," ~ variable)* ~ ")" }
+
+cost_def = { "cost" ~ variable ~ "=" ~ integer }
+
+extract_query = { "extract" ~ heads ~ "print" ~ "(" ~ variable ~ ("," ~ variable)* ~ ")" }
 
 heads = {
     head ~ ("," ~ head)*

@@ -23,7 +23,7 @@ use quine_core::types::*;
 
 use crate::env::{CompileEnv, TableEnv};
 use crate::interner::Interner;
-use crate::syntax::Atom;
+use crate::syntax::{Atom, CostDef};
 use crate::term::Term;
 
 #[derive(Debug, Clone)]
@@ -38,6 +38,8 @@ pub enum CompiledUnit {
     Rule(Option<String>, rule::Rule),
     Action(rule::Action),
     Run(Run),
+    CostDef(CostDef),
+    Extract(rule::Query, Vec<String>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -58,6 +60,7 @@ pub struct EngineContext {
     pub regraph: RelatedEGraph,
     pub native_names: Map<String, usize>,
     pub native_signatures: Map<String, NativeSignature>,
+    pub cost_models: Map<String, u64>,
 }
 
 impl EngineContext {
@@ -76,6 +79,13 @@ impl EngineContext {
             }
             CompiledUnit::Run(run) => {
                 self.apply_run(&run);
+            }
+            CompiledUnit::CostDef(def) => {
+                let key = format!("{}.{}", def.type_name, def.constructor);
+                self.cost_models.insert(key, def.cost);
+            }
+            CompiledUnit::Extract(_query, _vars) => {
+                // Phase 4 will implement cost-aware extraction
             }
         }
     }

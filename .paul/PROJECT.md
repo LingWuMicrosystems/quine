@@ -32,6 +32,9 @@ Rust workspace with three crates:
 | 1 | reverse_index only tracks eclass-typed value columns (Id, named types), not literal types | Literal values don't participate in eclass unions | 01 |
 | 2 | reverse_index merging on both explicit `union()` and rebuild-time key-dedup unions | Ensures complete coverage of all union paths | 01 |
 | 3 | `ActionCtx::reverse_index` uses `&mut` reference (not owned) | Matches existing pattern of tables/union_find/pending_unions fields | 01 |
+| 4 | Cost syntax uses flat `u64` per constructor: `cost TypeName.ConsName = <int>` | Simpler than expression-based costs; sufficient for cost-as-sum model | 02 |
+| 5 | `EngineContext.cost_models: Map<String, u64>` stores costs, defaulting to 0 | Central location accessible by compilation and future analysis phases | 02 |
+| 6 | Dotted names (`Option.Some`) parsed as single Pest variable, split at parser level | `.` is valid in Pest `variable_char`; splitting in parser avoids grammar complexity | 02 |
 
 ## DSL Syntax
 
@@ -54,6 +57,7 @@ rule edge(x, y) { set path(x, y) }
 | Phase | Status | Completed |
 |-------|--------|-----------|
 | 01 — Core Engine (reverse_index, eclass_enodes) | ✅ Complete | 2026-06-02 |
+| 02 — Cost + Extraction Syntax | ✅ Complete | 2026-06-03 |
 
 ---
-*Last updated: 2026-06-02 after Phase 01*
+*Last updated: 2026-06-03 after Phase 02*

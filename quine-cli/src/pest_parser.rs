@@ -3,8 +3,8 @@ use pest_derive::Parser;
 use quine_core::{rule::Op, types::*};
 
 use quine_frontend::syntax::{
-    Atom, AtomOrVariable, Body, Command, ConstructorPattern, Expr, FunctionCall, Head, Pattern,
-    Rule as SyntaxRule, Span,
+    Atom, AtomOrVariable, Body, Command, ConstructorPattern, CostDef, Expr, FunctionCall, Head,
+    Pattern, Rule as SyntaxRule, Span,
 };
 use quine_core::related_egraph::RunMode;
 use quine_frontend::{Run as SyntaxRun, RunBody};
@@ -216,6 +216,28 @@ fn parse_type_constructor(pair: pest::iterators::Pair<Rule>) -> TypeConstructor 
     TypeConstructor(name, types)
 }
 
+fn parse_cost_def(pair: pest::iterators::Pair<Rule>) -> CostDef {
+    let mut parts = pair.into_inner();
+    let full_name = parse_variable(parts.next().unwrap());
+    let cost_str = parts.next().unwrap().as_str();
+    // Parse as u64 — panics on negative input (u64 rejects "-1")
+    let cost: u64 = cost_str.parse().unwrap();
+    // Split "TypeName.ConstructorName" on the last dot
+    let (type_name, constructor) = full_name
+        .rsplit_once('.')
+        .map(|(t, c)| (t.to_string(), c.to_string()))
+        .unwrap_or_else(|| {
+            // If no dot, the full name is both type and constructor
+            // (e.g., for single-constructor types where the name IS the constructor)
+            (full_name.clone(), full_name)
+        });
+    CostDef {
+        type_name,
+        constructor,
+        cost,
+    }
+}
+
 fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
     debug_assert!(matches!(pair.as_rule(), Rule::command));
     let inner = pair.into_inner().next().unwrap();
@@ -277,6 +299,13 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
         Rule::run => {
             let run_item = inner.into_inner().next().unwrap();
             Command::Run(parse_run_item(run_item))
+        }
+        Rule::cost_def => Command::CostDef(parse_cost_def(inner)),
+        Rule::extract_query => {
+            let mut parts = inner.into_inner();
+            let heads = parse_heads(parts.next().unwrap());
+            let vars: Vec<_> = parts.map(|p| parse_variable(p)).collect();
+            Command::Extract(heads, vars)
         }
         _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),
     }

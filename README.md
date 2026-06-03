@@ -67,9 +67,29 @@ rule node(x), node(y), leteq x = y { union x with y }
 ### Query
 
 ```
-query edge(_, y), if y > 0
-query path(x, _)
+query edge(_, y), if y > 0i32 print(y)
+query path(x, _) print(x)
 ```
+
+### Cost Models
+
+```
+cost Option.Some = 2
+cost Option.None = 0
+cost Expr.Add = 1
+cost Expr.Mul = 2
+```
+
+Define integer costs for data type constructors. The cost of an expression is the sum of costs of all constructors in the tree. Constructors without a defined cost default to 0. Only data type constructors (`TypeName.ConstructorName`) can have costs; relations and functions cannot.
+
+### Extract
+
+```
+extract expr(x) print(x)
+extract path(x, y), if x > 0i32 print(x, y)
+```
+
+Extract the lowest-cost expression matching the pattern from the e-graph, using defined cost models to compare equivalent expressions. Supports the same pattern syntax as `query` (constructor patterns, guards, leteq). The `print(...)` clause specifies which matched variables to output.
 
 ### Run
 

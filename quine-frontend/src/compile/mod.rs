@@ -83,7 +83,27 @@ pub fn compile_command(
             native_signatures,
         )
         .map(CompiledUnit::Action),
-        Command::Query(_, _) => unreachable!(),
+        Command::Query(_, _) => unreachable!("Query compiled separately"),
+        Command::CostDef(def) => {
+            // Validate: type_name must be a defined data type
+            if !data_types.name2type_map.contains_key(&def.type_name) {
+                return Err(CompileError::UnknownTypeName(def.type_name.clone()));
+            }
+            // Validate: constructor must exist on the type
+            // cons2type_map keys are "TypeName.ConstructorName"
+            let full_name = format!("{}.{}", def.type_name, def.constructor);
+            if !data_types.cons2type_map.contains_key(&full_name) {
+                return Err(CompileError::UnknownConstructor(
+                    def.type_name.clone(),
+                    def.constructor.clone(),
+                ));
+            }
+            Ok(CompiledUnit::CostDef(def.clone()))
+        }
+        Command::Extract(heads, vars) => {
+            let query = heads2query(heads, table_types, data_types, interner)?;
+            Ok(CompiledUnit::Extract(query, vars.clone()))
+        }
         Command::Run(run) => Ok(CompiledUnit::Run(run.clone())),
     }
 }

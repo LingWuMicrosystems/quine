@@ -33,6 +33,15 @@ pub enum Command {
     Fact(Bodys),
     Query(Heads, Vec<String>),
     Run(Run),
+    CostDef(CostDef),
+    Extract(Heads, Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CostDef {
+    pub type_name: String,
+    pub constructor: String,
+    pub cost: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -117,6 +126,16 @@ pub enum Body {
     Let(Span, String, FunctionCall),
     Insert(Span, FunctionCall, Option<Expr>),
     Union(Span, Expr, Expr),
+}
+
+impl Display for CostDef {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "cost {}.{} = {}",
+            self.type_name, self.constructor, self.cost
+        )
+    }
 }
 
 impl Display for AtomOrVariable {
@@ -310,6 +329,24 @@ impl Display for Command {
                 write!(f, ")")
             }
             Command::Run(..) => write!(f, "run"),
+            Command::CostDef(def) => write!(f, "{def}"),
+            Command::Extract(heads, vars) => {
+                write!(f, "extract ")?;
+                for (idx, head) in heads.iter().enumerate() {
+                    if idx != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{head}")?;
+                }
+                write!(f, " print(")?;
+                for (idx, v) in vars.iter().enumerate() {
+                    if idx != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{v}")?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }

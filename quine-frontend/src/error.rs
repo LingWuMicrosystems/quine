@@ -19,4 +19,5 @@ pub enum CompileError {
     InvalidExpression,
     MergeOnNonNumeric(String),
     MergeRequired(String),
+    UnknownConstructor(String, String),
 }

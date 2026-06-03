@@ -1,8 +1,7 @@
-pub mod pest_parser;
-
 use std::env;
 use std::{borrow::Cow, fs, path::PathBuf};
 
+use quine::pest_parser::{parse_file, parse_repl_commands};
 use quine_frontend::EngineContext;
 use quine_frontend::compile::compile_command;
 use quine_frontend::compile::head2query::heads2query;
@@ -13,8 +12,6 @@ use quine_frontend::prelude::register_prelude;
 use quine_core::common::Set;
 use quine_core::rule::VariableRecord;
 use quine_core::table::Row;
-
-use crate::pest_parser::{parse_file, parse_repl_commands};
 
 use directories::ProjectDirs;
 use reedline::{
