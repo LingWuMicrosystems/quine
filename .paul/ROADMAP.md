@@ -45,10 +45,38 @@ Plans: 1/1 complete — [05-01](.paul/phases/05-expression-extraction/05-01-SUMM
 
 ---
 
-## Next Milestone
+## Current Milestone
 
-**v0.3 — TBD**
-Status: Not started
+**v0.3 — ILP Solver Enhanced Extraction**
+Status: 🚧 In Progress
+Phases: 1 of 4 complete
+
+| # | Phase | Plans | Status | Completed |
+|---|-------|-------|--------|-----------|
+| 6 | ILP Solver Design Report | [06-01](.paul/phases/06-ilp-solver-design/06-01-SUMMARY.md) | ✅ Complete | 2026-06-05 |
+| 7 | Solver Implementation | TBD | Not started | - |
+| 8 | Solver Integration | TBD | Not started | - |
+| 9 | Enhanced Extraction | TBD | Not started | - |
+
+### Phase 6: ILP Solver Design Report ✅
+
+Focus: Architecture and design document for the built-in ILP solver
+Plans: 1/1 complete — [06-01](.paul/phases/06-ilp-solver-design/06-01-SUMMARY.md) — comprehensive design report: B&B-CR algorithm, ILP formulation mapped to Quine types, solver architecture (new quine-solver crate, no_std + alloc), `extract optimal <expr>` DSL syntax, 2 worked examples
+
+### Phase 7: Solver Implementation
+
+Focus: Build the ILP solver core engine
+Plans: TBD (defined during /paul:plan)
+
+### Phase 8: Solver Integration
+
+Focus: Wire the ILP solver into the e-graph and extraction pipeline
+Plans: TBD (defined during /paul:plan)
+
+### Phase 9: Enhanced Extraction
+
+Focus: ILP-based optimal expression extraction from the e-graph
+Plans: TBD (defined during /paul:plan)
 
 ---
-*Last updated: 2026-06-03 (v0.2 milestone complete)*
+*Last updated: 2026-06-05 (v0.3 milestone created)*

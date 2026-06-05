@@ -40,6 +40,9 @@ Rust workspace with three crates:
 | 8 | ActionCtx::union performs eager cost merge (not deferred to rebuild) | Consistency with reverse_index merging pattern; ensures cost state stays synchronized across all union paths | 03 |
 | 9 | cost_models moved from EngineContext to RelatedEGraph | Costs are an e-graph concern; RelatedEGraph owns both the data and the computation | 03 |
 | 10 | Extract syntax changed to `extract <expr>` (concrete values, not patterns) | Extraction needs a concrete expression to find in the e-graph; pattern matching unnecessary | 04 |
+| 11 | ILP solver algorithm: Branch-and-Bound with Combinatorial Relaxation (B&B-CR) | Exploits DAG structure; relaxation is O(|E|) DAG shortest-path; no floating-point; branches on CSE ownership | 06 |
+| 12 | ILP solver crate: new quine-solver (no_std + alloc); all library crates share no_std stance | Consistent with quine-core/quine-frontend; alloc provides BinaryHeap, BTreeMap, Vec | 06 |
+| 13 | ILP extraction syntax: `extract optimal <expr>` — inline DSL, not CLI flag | Natural extension of existing `extract <expr>`; discoverable; no configuration needed | 06 |
 
 ## DSL Syntax
 
@@ -66,6 +69,10 @@ rule edge(x, y) { set path(x, y) }
 | 03 — Cost Analysis (lattice, incremental computation) | ✅ Complete | 2026-06-03 |
 | 04 — Change Extraction Syntax (extract \<expr\>) | ✅ Complete | 2026-06-03 |
 | 05 — Expression Extraction (cost-aware evaluation) | ✅ Complete | 2026-06-03 |
+| 06 — ILP Solver Design Report | ✅ Complete | 2026-06-05 |
+| 07 — Solver Implementation | 🔵 Planned | - |
+| 08 — Solver Integration | 🔵 Planned | - |
+| 09 — Enhanced Extraction | 🔵 Planned | - |
 
 ---
-*Last updated: 2026-06-03 after Phase 05*
+*Last updated: 2026-06-05 after Phase 6*

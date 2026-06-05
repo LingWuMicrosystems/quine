@@ -1,41 +1,43 @@
 ---
-status: complete
-current_milestone: v0.2
-current_phase: 05-expression-extraction
-last_updated: 2026-06-03
+status: ready_to_plan
+current_milestone: v0.3
+current_phase: 07-ilp-solver-implementation
+last_updated: 2026-06-05
 ---
 
 ## Current Position
 
-Milestone: v0.2 Cost Model & Expression Extraction — **COMPLETE**
-Phase: 5 of 5 (Expression Extraction) — Complete
-Plan: 05-01 unified, loop closed
-Status: v0.2 milestone complete — all 5 phases delivered
-Last activity: 2026-06-03 — UNIFY complete, SUMMARY.md created, loop closed
+Milestone: v0.3 ILP Solver Enhanced Extraction
+Phase: 7 of 9 (Solver Implementation)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-06-05 — Phase 6 complete (ILP Solver Design Report), transitioned to Phase 7
 
 Progress:
-- v0.2 Cost Model & Expression Extraction: [██████████] 100%
-- Phase 2: [██████████] 100%
-- Phase 3: [██████████] 100%
-- Phase 4: [██████████] 100%
-- Phase 5: [██████████] 100%
+- v0.3 ILP Solver Enhanced Extraction: [██░░░░░░░░] 25%
+- Phase 6: [██████████] 100% (Design report complete)
+- Phase 7: [░░░░░░░░░░] 0%
+- Phase 8: [░░░░░░░░░░] 0%
+- Phase 9: [░░░░░░░░░░] 0%
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Loop closed — milestone complete]
+  ○        ○        ○     [Ready for next PLAN]
 ```
 
 ## Session Continuity
 
-Last session: 2026-06-03
-Stopped at: UNIFY complete — v0.2 milestone delivered, 41 tests pass
-Next action: Plan next milestone (v0.3 or user-directed)
-Resume file: .paul/phases/05-expression-extraction/05-01-SUMMARY.md
+Last session: 2026-06-05
+Stopped at: Phase 6 complete, ready to plan Phase 7
+Next action: /paul:plan for Phase 7 (Solver Implementation)
+Resume file: .paul/phases/06-ilp-solver-design/06-01-SUMMARY.md
 
-## Decisions
+## Accumulated Context
+
+### Decisions
 
 | # | Decision | Plan | Date |
 |---|----------|------|------|
@@ -50,3 +52,12 @@ Resume file: .paul/phases/05-expression-extraction/05-01-SUMMARY.md
 | 9 | evaluate_expr does not canonicalize atom values via union_find.find() | 05-01 | 2026-06-03 |
 | 10 | materialize_cheapest falls back to extract_inner when no cost_select entry | 05-01 | 2026-06-03 |
 | 11 | Constructor name resolution: table_types.name_map → cons2type_map fallback | 05-01 | 2026-06-03 |
+| 12 | ILP solver algorithm: Branch-and-Bound with Combinatorial Relaxation (B&B-CR) | 06-01 | 2026-06-05 |
+| 13 | Solver crate: new quine-solver (no_std + alloc); consistent with quine-core/quine-frontend | 06-01 | 2026-06-05 |
+| 14 | ILP extraction via `extract optimal <expr>` DSL syntax; greedy remains default for `extract <expr>` | 06-01 | 2026-06-05 |
+| 15 | No external solver dependencies — all custom implementation | 06-01 | 2026-06-05 |
+
+### Git State
+Last commit: (pending transition commit)
+Branch: dev
+Feature branches: none
