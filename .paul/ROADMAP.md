@@ -66,7 +66,7 @@ Plans: 1/1 complete — [06-01](.paul/phases/06-ilp-solver-design/06-01-SUMMARY.
 ### Phase 7: Solver Implementation
 
 Focus: Build the ILP solver core engine
-Plans: TBD (defined during /paul:plan)
+Plans: 3 planned — [07-01](.paul/phases/07-ilp-solver-implementation/07-01-PLAN.md) (crate scaffold + data layer), 07-02 (solver algorithm), 07-03 (tests)
 
 ### Phase 8: Solver Integration
 

@@ -1,11 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["quine-cli", "quine-core", "quine-frontend"]
+members = ["quine-cli", "quine-core", "quine-frontend", "quine-solver"]
 
 [workspace.dependencies]
 rustc-hash = "2.1.2"
 quine-core = { path="./quine-core" }
 quine-frontend = { path="./quine-frontend" }
+quine-solver = { path="./quine-solver" }
 
 [profile.release]
 debug = true

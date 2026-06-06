@@ -1,0 +1,8 @@
+[package]
+name = "quine-solver"
+version = "0.3.0"
+edition = "2024"
+
+[dependencies]
+quine-core = { workspace = true }
+quine-frontend = { workspace = true }
