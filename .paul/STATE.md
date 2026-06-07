@@ -2,21 +2,21 @@
 status: loop_complete
 current_milestone: v0.3
 current_phase: 07-ilp-solver-implementation
-last_updated: 2026-06-06
+last_updated: 2026-06-07
 ---
 
 ## Current Position
 
 Milestone: v0.3 ILP Solver Enhanced Extraction
-Phase: 7 of 9 (Solver Implementation) — 1 of 3 plans complete
-Plan: 07-01 complete (crate scaffold + data layer)
+Phase: 7 of 9 (Solver Implementation) — 2 of 3 plans complete
+Plan: 07-02 unified (B&B-CR solver algorithm)
 Status: Loop closed, ready for next PLAN
-Last activity: 2026-06-06 — Closed loop on 07-01
+Last activity: 2026-06-07 — Unified 07-02; created SUMMARY.md
 
 Progress:
-- v0.3 ILP Solver Enhanced Extraction: [███░░░░░░░] 30%
+- v0.3 ILP Solver Enhanced Extraction: [█████░░░░░] 50%
 - Phase 6: [██████████] 100% (Design report complete)
-- Phase 7: [███░░░░░░░] 33% (Plan 07-01 of 3 unified)
+- Phase 7: [██████░░░░] 66% (Plans 07-01, 07-02 complete; 07-03 pending)
 - Phase 8: [░░░░░░░░░░] 0%
 - Phase 9: [░░░░░░░░░░] 0%
 
@@ -30,15 +30,14 @@ PLAN ──▶ APPLY ──▶ UNIFY
 
 ## Session Continuity
 
-Last session: 2026-06-06
-Stopped at: Plan 07-01 unified, loop closed; paused for session break
-Next action: /paul:plan for Phase 7 Plan 07-02 (solver algorithm)
-Resume file: .paul/HANDOFF-2026-06-06.md
+Last session: 2026-06-07
+Stopped at: Plan 07-02 unified; loop closed
+Next action: /paul:plan for Phase 7 Plan 07-03 (ILP solver tests) — or fix #16 first
+Resume file: .paul/phases/07-ilp-solver-implementation/07-02-SUMMARY.md
 Resume context:
-- Plan 07-01 complete: quine-solver crate scaffold + ExtractionDAG builder (290 lines)
-- 1 deviation: removed cycle panic (e-graphs can have self-referencing enodes)
-- Next: 07-02 implements relaxation.rs + solver.rs (B&B-CR algorithm from design report §4.4)
-- Design report at .paul/phases/06-ilp-solver-design/ILP-DESIGN-REPORT.md is source of truth
+- 07-02 unified: 579 lines, 2 tasks, 0 failures
+- 1 auto-fix: child_parents dedup in dag.rs
+- 1 deferred: #16 FixedDecision enum → struct (SELECTED + OwnedBy can't coexist)
 
 ## Accumulated Context
 
@@ -66,3 +65,10 @@ Resume context:
 Last commit: 4e39f52
 Branch: dev
 Feature branches: none
+
+### Known Issues (07-02)
+
+| # | Issue | Status | Fix in |
+|---|-------|--------|--------|
+| 16 | `FixedDecision` enum 不支持同一 eclass 同时有 `Selected` + `OwnedBy`（嵌套 CSE 场景） | Deferred | 07-02 下一个 task |
+| 17 | `child_parents` 记录重复 `(parent, enode)` 对导致虚假 CSE edge（如 `Add(A,A)`） | ✅ Fixed in dag.rs | — |

@@ -116,16 +116,19 @@ pub fn build_extraction_dag(
                     let child_canon = regraph.find(child_val);
 
                     // Record parent → child for CSE detection.
+                    // Dedup: skip if this (parent, enode) pair already
+                    // recorded (e.g., `Add(A, A)` references A twice from
+                    // the same enode — not a CSE edge, just repeated child).
                     // Note: e-graphs may contain cycles (e.g., `x + 0 => x`
                     // puts an enode referencing its own eclass). Self-loops
                     // are recorded as edges but the visited set prevents
                     // re-enqueueing. The solver naturally avoids cyclic
                     // paths: all costs are non-negative, so cycles never
                     // improve the objective.
-                    child_parents
-                        .entry(child_canon)
-                        .or_default()
-                        .push((idx, enode_i));
+                    let parents = child_parents.entry(child_canon).or_default();
+                    if !parents.contains(&(idx, enode_i)) {
+                        parents.push((idx, enode_i));
+                    }
 
                     // Enqueue if not yet visited (prevents infinite loops
                     // on cycles; child is already in the DAG)

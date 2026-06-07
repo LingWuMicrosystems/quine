@@ -54,7 +54,7 @@ Phases: 1 of 4 complete
 | # | Phase | Plans | Status | Completed |
 |---|-------|-------|--------|-----------|
 | 6 | ILP Solver Design Report | [06-01](.paul/phases/06-ilp-solver-design/06-01-SUMMARY.md) | ✅ Complete | 2026-06-05 |
-| 7 | Solver Implementation | TBD | Not started | - |
+| 7 | Solver Implementation | [07-01](.paul/phases/07-ilp-solver-implementation/07-01-SUMMARY.md), [07-02](.paul/phases/07-ilp-solver-implementation/07-02-SUMMARY.md) | In progress | - |
 | 8 | Solver Integration | TBD | Not started | - |
 | 9 | Enhanced Extraction | TBD | Not started | - |
 

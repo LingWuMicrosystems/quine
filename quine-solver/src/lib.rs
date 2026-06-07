@@ -3,12 +3,19 @@ extern crate alloc;
 
 pub mod dag;
 pub mod formulation;
+pub mod relaxation;
+pub mod solver;
 
 pub use dag::ExtractionDAG;
 
+use alloc::vec;
 use quine_core::common::Value;
 use quine_core::related_egraph::RelatedEGraph;
 use quine_frontend::term::Term;
+
+use crate::dag::build_extraction_dag;
+use crate::relaxation::{solve_dag_shortest_path, Solution};
+use crate::solver::{branch_and_bound, extract_solution_from_dag, BnBNode, BnBStats};
 
 /// Configuration for the ILP extraction solver.
 #[derive(Debug, Clone)]
@@ -45,21 +52,79 @@ pub struct ILPResult {
 }
 
 /// Main entry point: extract the cheapest expression for `root_eclass`
-/// using ILP-based optimization.
+/// using ILP-based Branch-and-Bound with Combinatorial Relaxation (B&B-CR).
 ///
-/// Falls back to greedy extraction if the e-graph exceeds `config.max_eclasses`
-/// or if the solver times out.
+/// ## Algorithm
+/// 1. Build an `ExtractionDAG` from the e-graph reachable from `root_eclass`.
+/// 2. If the DAG has no CSE edges: greedy DP is optimal — fast path.
+/// 3. Otherwise: B&B-CR search for the globally optimal extraction.
 ///
-/// STUB: Returns empty result. Full implementation in 07-02.
+/// ## Fallback
+/// Returns a greedy (potentially suboptimal) result if the e-graph exceeds
+/// `config.max_eclasses`. The `optimal` field is `false` in this case.
 pub fn ilp_extract(
-    _regraph: &RelatedEGraph,
-    _root_eclass: Value,
-    _config: &ILPConfig,
+    regraph: &RelatedEGraph,
+    root_eclass: Value,
+    config: &ILPConfig,
 ) -> ILPResult {
+    let dag = build_extraction_dag(regraph, root_eclass);
+
+    // Empty e-graph — nothing to extract.
+    if dag.eclasses.is_empty() {
+        return ILPResult {
+            term: None,
+            optimal: false,
+            nodes_explored: 0,
+            cost: 0,
+        };
+    }
+
+    // Fallback: e-graph too large for optimal search.
+    if dag.eclasses.len() > config.max_eclasses {
+        let solution = solve_dag_shortest_path(&dag, regraph);
+        let term = extract_solution_from_dag(&dag, regraph, &solution);
+        return ILPResult {
+            term: Some(term),
+            optimal: false,
+            nodes_explored: 0,
+            cost: solution.cost,
+        };
+    }
+
+    // No CSE edges: greedy DP is globally optimal — fast path.
+    if dag.cse_edges.is_empty() {
+        let solution = solve_dag_shortest_path(&dag, regraph);
+        let term = extract_solution_from_dag(&dag, regraph, &solution);
+        return ILPResult {
+            term: Some(term),
+            optimal: true,
+            nodes_explored: 0,
+            cost: solution.cost,
+        };
+    }
+
+    // B&B-CR: search for the global optimum.
+    let mut best = Solution {
+        enode_selection: vec![None; dag.eclasses.len()],
+        cost: u64::MAX,
+    };
+    let root_node = BnBNode {
+        fixed: alloc::collections::BTreeMap::new(),
+    };
+    let mut stats = BnBStats::default();
+
+    branch_and_bound(&dag, regraph, &root_node, &mut best, &mut stats);
+
+    let term = if best.cost < u64::MAX {
+        Some(extract_solution_from_dag(&dag, regraph, &best))
+    } else {
+        None
+    };
+
     ILPResult {
-        term: None,
-        optimal: false,
-        nodes_explored: 0,
-        cost: 0,
+        term,
+        optimal: best.cost < u64::MAX,
+        nodes_explored: stats.nodes_explored,
+        cost: best.cost,
     }
 }
