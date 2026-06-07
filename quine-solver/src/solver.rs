@@ -8,7 +8,8 @@ use quine_frontend::term::Term;
 use crate::dag::ExtractionDAG;
 use crate::formulation::{atom_from_value, type_is_eclass};
 use crate::relaxation::{
-    find_cse_violations, pick_branching_eclass, solve_relaxation, FixedDecision, Solution,
+    find_cse_violations, pick_branching_eclass, solve_relaxation, CseDecision, FixedDecision,
+    Solution,
 };
 
 /// A node in the Branch-and-Bound search tree.
@@ -65,7 +66,7 @@ pub fn branch_and_bound(
     }
 
     // 3. Check feasibility: are there CSE violations?
-    let violations = find_cse_violations(dag, &relaxed);
+    let violations = find_cse_violations(dag, &relaxed, &node.fixed);
     if violations.is_empty() {
         // Feasible solution found — update incumbent.
         best.enode_selection = relaxed.enode_selection;
@@ -86,21 +87,31 @@ pub fn branch_and_bound(
     // --- Branch A: NotShared (break CSE coupling) ---
     {
         let mut child = node.clone();
-        child.fixed.insert(eclass_idx, FixedDecision::NotShared);
+        child
+            .fixed
+            .entry(eclass_idx)
+            .or_default()
+            .cse = Some(CseDecision::NotShared);
         branch_and_bound(dag, regraph, &child, best, stats);
     }
 
     // --- Branch B: OwnedBy each parent ---
     for &(parent_idx, enode_idx) in &cse_edge.parent_enodes {
         let mut child = node.clone();
+        // Merge: don't overwrite existing decisions on this eclass.
         child
             .fixed
-            .insert(eclass_idx, FixedDecision::OwnedBy(parent_idx));
+            .entry(eclass_idx)
+            .or_default()
+            .cse = Some(CseDecision::OwnedBy(parent_idx));
         // Fix the parent to select the specific enode that references this child.
+        // Also use merge to coexist with any existing CSE decision on the parent.
         let (tid, ridx) = dag.eclasses[parent_idx].enodes[enode_idx];
         child
             .fixed
-            .insert(parent_idx, FixedDecision::Selected(tid, ridx));
+            .entry(parent_idx)
+            .or_default()
+            .selected = Some((tid, ridx));
         branch_and_bound(dag, regraph, &child, best, stats);
     }
 }
@@ -189,6 +200,193 @@ fn build_term(
             }
 
             Term::App(table_name, children)
+        }
+    }
+}
+
+// ============================================================================
+// Unit tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::collections::BTreeMap;
+    use alloc::vec;
+    use quine_core::common::Value;
+    use quine_core::related_egraph::RelatedEGraph;
+    use quine_core::table::Row;
+    use quine_core::types::{TableDef, Type};
+    use crate::dag::{CseEdge, EclassNode, ExtractionDAG};
+
+    /// Create a minimal e-graph with an "Op" table.
+    fn make_eg(child_types: &[Type], cost: u64) -> RelatedEGraph {
+        let mut eg = RelatedEGraph::default();
+        let mut all: Vec<Type> = child_types.to_vec();
+        all.push(Type::Name("Expr".into()));
+        eg.add_table(TableDef("Op".into(), all.into_boxed_slice(), None));
+        eg.set_cost_model("Op".into(), cost);
+        eg
+    }
+
+    /// Build a CSE DAG (like design report §8.1): A=0, B=1, C=2, D=3 (BFS order).
+    fn make_cse_dag() -> (RelatedEGraph, ExtractionDAG) {
+        let types = [Type::Name("Expr".into()), Type::Name("Expr".into())];
+        let mut eg = make_eg(&types, 5);
+        let a = eg.fresh_id();
+        let b = eg.fresh_id();
+        let c = eg.fresh_id();
+        let d = eg.fresh_id();
+        let z: Vec<Value> = (0..5).map(|_| eg.fresh_id()).collect();
+
+        // A: root, children = B, C
+        eg.insert(0, Row(smallvec::smallvec![b, c]), a);
+        // B: child = D
+        eg.insert(0, Row(smallvec::smallvec![d, z[0]]), b);
+        // C: child = D
+        eg.insert(0, Row(smallvec::smallvec![d, z[1]]), c);
+        // D: leaf (2 enodes)
+        eg.insert(0, Row(smallvec::smallvec![z[2], z[3]]), d);
+        eg.insert(0, Row(smallvec::smallvec![z[4], z[4]]), d);
+
+        let dag = ExtractionDAG {
+            eclasses: vec![
+                EclassNode { canonical: a, enodes: vec![(0, RowIndex(0))] },
+                EclassNode { canonical: b, enodes: vec![(0, RowIndex(1))] },
+                EclassNode { canonical: c, enodes: vec![(0, RowIndex(2))] },
+                EclassNode { canonical: d, enodes: vec![(0, RowIndex(3)), (0, RowIndex(4))] },
+            ],
+            root: 0,
+            cse_edges: vec![CseEdge {
+                child_eclass: 3,
+                parent_enodes: vec![(1, 0), (2, 0)],
+            }],
+        };
+        (eg, dag)
+    }
+
+    // ------------------------------------------------------------------
+    // AC-2: branch_and_bound
+    // ------------------------------------------------------------------
+
+    /// Tree DAG (no CSE) — B&B finds optimum in a single root node.
+    ///
+    /// Given: a 2-eclass tree DAG with no CSE edges
+    /// When:  branch_and_bound is called starting from a fresh BnBNode
+    /// Then:  best cost = 10 (constructor costs only), nodes_explored = 1 (no branching needed)
+    #[test]
+    fn test_branch_and_bound_tree() {
+        // Tree DAG (no CSE) — B&B finds optimum in 1 node.
+        let types = [Type::Name("Expr".into())];
+        let mut eg = make_eg(&types, 5);
+        let r = eg.fresh_id();
+        let c = eg.fresh_id();
+        let z = eg.fresh_id();
+        eg.insert(0, Row(smallvec::smallvec![z]), c);
+        eg.insert(0, Row(smallvec::smallvec![c]), r);
+
+        let dag = ExtractionDAG {
+            eclasses: vec![
+                EclassNode { canonical: r, enodes: vec![(0, RowIndex(1))] },
+                EclassNode { canonical: c, enodes: vec![(0, RowIndex(0))] },
+            ],
+            root: 0,
+            cse_edges: vec![],
+        };
+
+        let mut best = Solution { enode_selection: vec![None; 2], cost: u64::MAX };
+        let mut stats = BnBStats::default();
+        let node = BnBNode { fixed: BTreeMap::new() };
+        branch_and_bound(&dag, &eg, &node, &mut best, &mut stats);
+
+        assert_eq!(best.cost, 10);
+        assert_eq!(stats.nodes_explored, 1);
+    }
+
+    /// CSE DAG — B&B branches and finds optimum lower than greedy relaxation.
+    ///
+    /// Given: a DAG with 1 CSE edge (D shared by B and C)
+    /// When:  branch_and_bound explores branches (NotShared, OwnedBy)
+    /// Then:  best cost < 25 (relaxation), nodes_explored > 1 (multiple branches explored)
+    #[test]
+    fn test_branch_and_bound_single_cse() {
+        // CSE DAG — B&B finds optimum with cost lower than greedy relaxation.
+        let (eg, dag) = make_cse_dag();
+
+        let n = dag.eclasses.len();
+        let mut best = Solution { enode_selection: vec![None; n], cost: u64::MAX };
+        let mut stats = BnBStats::default();
+        let node = BnBNode { fixed: BTreeMap::new() };
+        branch_and_bound(&dag, &eg, &node, &mut best, &mut stats);
+
+        // Relaxation (greedy) cost without CSE adjustment: 25.
+        // Optimal with CSE: 20 or less (one branch with OwnedBy).
+        assert!(best.cost < 25, "expected optimal < 25, got {}", best.cost);
+        assert!(stats.nodes_explored > 1, "should explore multiple B&B nodes");
+        assert!(best.cost < u64::MAX);
+    }
+
+    /// Bound pruning: B&B skips nodes where relaxation ≥ incumbent.
+    ///
+    /// Given: a CSE DAG and an incumbent cost already set to relaxation value (25)
+    /// When:  branch_and_bound evaluates the root node
+    /// Then:  relaxation cost (25) ≥ best cost (25) → pruned immediately, nodes_explored = 1
+    #[test]
+    fn test_branch_and_bound_pruning() {
+        // With an incumbent already at relaxation cost, B&B should prune immediately.
+        let (eg, dag) = make_cse_dag();
+
+        let n = dag.eclasses.len();
+        // Set best to relaxation cost (25) as if a leaf already found.
+        let mut best = Solution { enode_selection: vec![None; n], cost: 25 };
+        let mut stats = BnBStats::default();
+        let node = BnBNode { fixed: BTreeMap::new() };
+        branch_and_bound(&dag, &eg, &node, &mut best, &mut stats);
+
+        // The root relaxation has cost 25. Since best.cost = 25,
+        // `relaxed.cost >= best.cost` → prune at root → 1 node only.
+        assert_eq!(stats.nodes_explored, 1);
+    }
+
+    // ------------------------------------------------------------------
+    // AC-2: extract_solution_from_dag
+    // ------------------------------------------------------------------
+
+    /// Materializes a valid Term from a Solution by walking selected enodes.
+    ///
+    /// Given: a 2-eclass tree DAG and a Solution selecting enodes for each eclass
+    /// When:  extract_solution_from_dag builds the Term tree
+    /// Then:  returns Term::App("Op", [child_term]) with correct structure
+    #[test]
+    fn test_extract_solution_from_dag() {
+        let types = [Type::Name("Expr".into())];
+        let mut eg = make_eg(&types, 5);
+        let r = eg.fresh_id();
+        let c = eg.fresh_id();
+        let z = eg.fresh_id();
+        eg.insert(0, Row(smallvec::smallvec![z]), c);
+        eg.insert(0, Row(smallvec::smallvec![c]), r);
+
+        let dag = ExtractionDAG {
+            eclasses: vec![
+                EclassNode { canonical: r, enodes: vec![(0, RowIndex(1))] },
+                EclassNode { canonical: c, enodes: vec![(0, RowIndex(0))] },
+            ],
+            root: 0,
+            cse_edges: vec![],
+        };
+
+        let solution = Solution {
+            enode_selection: vec![Some((0, RowIndex(1))), Some((0, RowIndex(0)))],
+            cost: 10,
+        };
+        let term = extract_solution_from_dag(&dag, &eg, &solution);
+        match &term {
+            Term::App(name, children) => {
+                assert_eq!(name, "Op");
+                assert_eq!(children.len(), 1);
+            }
+            _ => panic!("expected Term::App, got {:?}", term),
         }
     }
 }

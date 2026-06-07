@@ -49,12 +49,12 @@ Plans: 1/1 complete — [05-01](.paul/phases/05-expression-extraction/05-01-SUMM
 
 **v0.3 — ILP Solver Enhanced Extraction**
 Status: 🚧 In Progress
-Phases: 1 of 4 complete
+Phases: 2 of 4 complete
 
 | # | Phase | Plans | Status | Completed |
 |---|-------|-------|--------|-----------|
 | 6 | ILP Solver Design Report | [06-01](.paul/phases/06-ilp-solver-design/06-01-SUMMARY.md) | ✅ Complete | 2026-06-05 |
-| 7 | Solver Implementation | [07-01](.paul/phases/07-ilp-solver-implementation/07-01-SUMMARY.md), [07-02](.paul/phases/07-ilp-solver-implementation/07-02-SUMMARY.md) | In progress | - |
+| 7 | Solver Implementation | [07-01](.paul/phases/07-ilp-solver-implementation/07-01-SUMMARY.md), [07-02](.paul/phases/07-ilp-solver-implementation/07-02-SUMMARY.md), [07-03](.paul/phases/07-ilp-solver-implementation/07-03-SUMMARY.md) | ✅ Complete | 2026-06-07 |
 | 8 | Solver Integration | TBD | Not started | - |
 | 9 | Enhanced Extraction | TBD | Not started | - |
 
@@ -63,10 +63,10 @@ Phases: 1 of 4 complete
 Focus: Architecture and design document for the built-in ILP solver
 Plans: 1/1 complete — [06-01](.paul/phases/06-ilp-solver-design/06-01-SUMMARY.md) — comprehensive design report: B&B-CR algorithm, ILP formulation mapped to Quine types, solver architecture (new quine-solver crate, no_std + alloc), `extract optimal <expr>` DSL syntax, 2 worked examples
 
-### Phase 7: Solver Implementation
+### Phase 7: Solver Implementation ✅
 
 Focus: Build the ILP solver core engine
-Plans: 3 planned — [07-01](.paul/phases/07-ilp-solver-implementation/07-01-PLAN.md) (crate scaffold + data layer), 07-02 (solver algorithm), 07-03 (tests)
+Plans: 3/3 complete — [07-01](.paul/phases/07-ilp-solver-implementation/07-01-SUMMARY.md) (crate scaffold + data layer), [07-02](.paul/phases/07-ilp-solver-implementation/07-02-SUMMARY.md) (B&B-CR solver algorithm), [07-03](.paul/phases/07-ilp-solver-implementation/07-03-SUMMARY.md) (28 tests covering exhaustive verification, property invariants, and design report scenarios)
 
 ### Phase 8: Solver Integration
 
@@ -79,4 +79,4 @@ Focus: ILP-based optimal expression extraction from the e-graph
 Plans: TBD (defined during /paul:plan)
 
 ---
-*Last updated: 2026-06-05 (v0.3 milestone created)*
+*Last updated: 2026-06-07 after Phase 7*

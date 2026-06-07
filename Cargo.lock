@@ -554,6 +554,7 @@ version = "0.3.0"
 dependencies = [
  "quine-core",
  "quine-frontend",
+ "smallvec",
 ]
 
 [[package]]

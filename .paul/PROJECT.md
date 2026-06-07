@@ -15,6 +15,7 @@ Rust workspace with three crates:
 | `quine-core` | Core engine: e-graph (equality saturation), relations, rules, types, union-find |
 | `quine-cli` | CLI + REPL for `.quine` files |
 | `quine-frontend` | Parser / frontend for the Quine DSL |
+| `quine-solver` | ILP solver: B&B-CR optimal extraction (no_std + alloc) |
 
 ## Core Engine (`quine-core`)
 
@@ -70,9 +71,9 @@ rule edge(x, y) { set path(x, y) }
 | 04 — Change Extraction Syntax (extract \<expr\>) | ✅ Complete | 2026-06-03 |
 | 05 — Expression Extraction (cost-aware evaluation) | ✅ Complete | 2026-06-03 |
 | 06 — ILP Solver Design Report | ✅ Complete | 2026-06-05 |
-| 07 — Solver Implementation | 🔵 Planned | - |
+| 07 — Solver Implementation | ✅ Complete | 2026-06-07 |
 | 08 — Solver Integration | 🔵 Planned | - |
 | 09 — Enhanced Extraction | 🔵 Planned | - |
 
 ---
-*Last updated: 2026-06-05 after Phase 6*
+*Last updated: 2026-06-07 after Phase 7*
