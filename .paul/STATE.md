@@ -28,15 +28,16 @@ PLAN ──▶ APPLY ──▶ UNIFY
 ## Session Continuity
 
 Last session: 2026-06-08
-Stopped at: v0.4 milestone complete, loop closed
+Stopped at: v0.4 milestone complete, session paused
 Next action: /paul:resume → /paul:milestone (v0.5)
-Resume file: .paul/phases/10-term-let/10-01-SUMMARY.md
+Resume file: .paul/HANDOFF-2026-06-08.md
 Resume context:
-- v0.4 delivered: Term::Let + Term::Var, two-pass let-aware extraction
-- Flat let display: (let ([_t0 val0] [_t1 val1]) body)
-- 51 tests passing (46 library + 5 new unit), 0 failures
-- 5 integration tests written (compile-ready, blocked by -liconv)
-- All 5 ACs passed
+- v0.4 delivered: Term::Let + Term::Var, flat let display, two-pass extraction
+- Both greedy and optimal paths wired with let-binding
+- Dead scan-fallback code removed (~150 lines) — cost_select always populated
+- README updated with extract optimal + let docs
+- 46 tests passing, 5 integration tests compile-ready (blocked by -liconv)
+- Decision #10 superseded (no more extract_inner fallback)
 
 ## Accumulated Context
 
@@ -65,9 +66,9 @@ Resume context:
 | 19 | Created milestone v0.4 Extraction Ergonomics — single phase: Term::Let | Phase 10 | 2026-06-08 |
 
 ### Git State
-Last commit: d0b53a2
+Last commit: f4455e6
 Branch: main
-Uncommitted: Phase 9 changes (quine-solver, quine-cli, tests, .paul/)
+Uncommitted: none
 
 ### Known Issues
 
