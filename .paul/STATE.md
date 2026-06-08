@@ -1,45 +1,42 @@
 ---
 status: milestone_complete
-current_milestone: v0.3
-current_phase: 09-enhanced-extraction
+current_milestone: v0.4
+current_phase: 10-term-let
 last_updated: 2026-06-08
 ---
 
 ## Current Position
 
-Milestone: v0.3 ILP Solver Enhanced Extraction — ✅ Complete
-Phase: 9 of 9 (Enhanced Extraction) — Complete
-Plan: 09-01 — unified, loop closed
-Status: v0.3 complete. Ready for next milestone.
-Last activity: 2026-06-08 — Unified 09-01, closed v0.3
+Milestone: v0.4 Extraction Ergonomics — ✅ Complete
+Phase: 10 of 1 (Term::Let Extraction) — Complete
+Plan: 10-01 — unified, loop closed
+Status: Phase complete. v0.4 complete.
+Last activity: 2026-06-08 — Unified 10-01, closed v0.4
 
 Progress:
-- v0.3 ILP Solver Enhanced Extraction: [██████████] 100%
-- Phase 6: [██████████] 100% (Design report complete)
-- Phase 7: [██████████] 100% (Solver implementation complete)
-- Phase 8: [██████████] 100% (Solver integration complete)
-- Phase 9: [██████████] 100% (Enhanced extraction complete)
+- v0.4 Extraction Ergonomics: [██████████] 100%
+- Phase 10: [██████████] 100% (Term::Let)
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Loop closed — v0.3 milestone complete]
+  ✓        ✓        ✓     [Loop closed — v0.4 milestone complete]
 ```
 
 ## Session Continuity
 
 Last session: 2026-06-08
-Stopped at: Phase 9 unified, v0.3 milestone complete
-Next action: /paul:milestone to start v0.4, or /paul:consider-issues to review deferred work
-Resume file: .paul/phases/09-enhanced-extraction/09-01-SUMMARY.md
+Stopped at: v0.4 milestone complete, loop closed
+Next action: /paul:resume → /paul:milestone (v0.5)
+Resume file: .paul/phases/10-term-let/10-01-SUMMARY.md
 Resume context:
-- v0.3 delivered: ILP solver design → implementation → integration → hardening
-- 38 tests passing across all crates, 0 failures, 0 warnings
-- 18 decisions recorded across 9 phases
-- Known issue: -liconv linker error on this machine (quine binary can't link)
-- Deferred: fuzz testing (random DAG + brute-force verification)
+- v0.4 delivered: Term::Let + Term::Var, two-pass let-aware extraction
+- Flat let display: (let ([_t0 val0] [_t1 val1]) body)
+- 51 tests passing (46 library + 5 new unit), 0 failures
+- 5 integration tests written (compile-ready, blocked by -liconv)
+- All 5 ACs passed
 
 ## Accumulated Context
 
@@ -65,6 +62,7 @@ Resume context:
 | 16 | FixedDecision refactored enum→struct with selected + cse fields + entry API merge | 07-02 fix | 2026-06-07 |
 | 17 | find_cse_violations accepts &fixed param; skips edges with CSE decision to prevent infinite recursion | 07-03 | 2026-06-07 |
 | 18 | BDD Given/When/Then doc comments on all 26 test functions | 07-03 | 2026-06-07 |
+| 19 | Created milestone v0.4 Extraction Ergonomics — single phase: Term::Let | Phase 10 | 2026-06-08 |
 
 ### Git State
 Last commit: d0b53a2

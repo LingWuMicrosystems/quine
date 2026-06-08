@@ -46,6 +46,9 @@ Rust workspace with three crates:
 | 13 | ILP extraction syntax: `extract optimal <expr>` — inline DSL, not CLI flag | Natural extension of existing `extract <expr>`; discoverable; no configuration needed | 06 |
 | 14 | CLI dispatches optimal extraction to ilp_extract (not EngineContext) | Avoids circular dependency: quine-solver → quine-frontend for Term | 08 |
 | 15 | build_extraction_dag pre-checks eclass_enodes().is_empty() before enqueuing children | Prevents empty EclassNode entries in DAG (fix #18); simplest approach without index remapping | 08 |
+| 16 | Term::Let uses Vec<(String, Term)> + Box<Term> — flat binding list, no nesting | User feedback: nested lets are unreadable; &mut Vec threading accumulates all shared bindings into single Let | 10 |
+| 17 | Display format for Let: `(let ([name val] ...) body)` — square bracket pairs | User preference; distinct from standard S-expression `((name val) ...)` parens for visual clarity | 10 |
+| 18 | Two-pass extraction: count_eclass_refs (DFS) → build_term_with_lets (build with Var) | Ensures shared eclasses detected before building; matches materialize_cheapest path (cost_select → find_defining_row) | 10 |
 
 ## DSL Syntax
 
@@ -76,6 +79,7 @@ rule edge(x, y) { set path(x, y) }
 | 07 — Solver Implementation | ✅ Complete | 2026-06-07 |
 | 08 — Solver Integration | ✅ Complete | 2026-06-08 |
 | 09 — Enhanced Extraction | ✅ Complete | 2026-06-08 |
+| 10 — Term::Let Extraction | ✅ Complete | 2026-06-08 |
 
 ---
-*Last updated: 2026-06-08 after Phase 9 — v0.3 complete*
+*Last updated: 2026-06-08 after Phase 10 — v0.4 complete*

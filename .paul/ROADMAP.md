@@ -45,9 +45,8 @@ Plans: 1/1 complete — [05-01](.paul/phases/05-expression-extraction/05-01-SUMM
 
 ---
 
-## Current Milestone
+## Milestone: v0.3 — ILP Solver Enhanced Extraction ✅
 
-**v0.3 — ILP Solver Enhanced Extraction**
 Status: ✅ Complete
 Phases: 4 of 4 complete
 
@@ -79,4 +78,20 @@ Focus: Wire ILPConfig fields, add integration tests
 Plans: 1/1 complete — [09-01](.paul/phases/09-enhanced-extraction/09-01-SUMMARY.md) wired time_limit_ms→B&B node budget, max_cse_edges_warning→user warning, 5 extract optimal integration tests; fuzz testing deferred
 
 ---
-*Last updated: 2026-06-08 after Phase 9 — v0.3 complete*
+
+## Milestone: v0.4 — Extraction Ergonomics ✅
+
+Status: ✅ Complete
+Phases: 1 of 1 complete
+
+| # | Phase | Plans | Status | Completed |
+|---|-------|-------|--------|-----------|
+| 10 | Term::Let Extraction | [10-01](.paul/phases/10-term-let/10-01-SUMMARY.md) | ✅ Complete | 2026-06-08 |
+
+### Phase 10: Term::Let Extraction ✅
+
+Focus: Let-binding for shared sub-expressions — `Term::Let` enables extraction output to bind multiply-referenced nodes to a name, eliminating duplication in printed expressions
+Plans: 1/1 complete — [10-01](.paul/phases/10-term-let/10-01-SUMMARY.md) added Term::Let + Term::Var variants, two-pass let-aware extraction (reference counting + build), flat `(let ([name val] ...) body)` display, 5 new unit tests, 5 integration tests
+
+---
+*Last updated: 2026-06-08 — v0.4 complete*

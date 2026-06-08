@@ -229,14 +229,15 @@ impl EngineContext {
     }
 
     /// Evaluate an extract expression and return the cheapest equivalent Term.
-    /// Chains evaluate_expr → materialize_cheapest. Atoms short-circuit directly.
+    /// Chains evaluate_expr → materialize_cheapest_with_lets.
+    /// Shared eclasses are bound with let to avoid expression duplication.
     pub fn evaluate_and_extract(&self, expr: &Expr) -> Term {
         // Bare atoms are literals, not eclass references
         if let Expr::AtomOrVariable(AtomOrVariable::Atom(atom)) = expr {
             return Term::Literal(atom.clone());
         }
         match self.evaluate_expr(expr) {
-            Ok(eclass) => self.materialize_cheapest(eclass),
+            Ok(eclass) => self.materialize_cheapest_with_lets(eclass),
             Err(msg) => Term::Literal(Atom::Str(alloc::format!("<error: {msg}>"))),
         }
     }
@@ -329,6 +330,277 @@ impl EngineContext {
         }
 
         Term::App(table.table_def.0.clone(), children)
+    }
+
+    // ========================================================================
+    // Let-aware extraction (two-pass: reference counting + build with lets)
+    // ========================================================================
+
+    /// Count how many enodes reference each eclass in the extraction DAG.
+    /// Follows the same path as materialize_cheapest (cost_select → find_defining_row).
+    fn count_eclass_refs(&self, eclass: Value) -> Map<Value, usize> {
+        let mut refs: Map<Value, usize> = Map::default();
+        let mut visited: Set<Value> = Set::default();
+        self.count_eclass_refs_inner(eclass, &mut refs, &mut visited);
+        refs
+    }
+
+    fn count_eclass_refs_inner(
+        &self,
+        eclass: Value,
+        refs: &mut Map<Value, usize>,
+        visited: &mut Set<Value>,
+    ) {
+        if !visited.insert(eclass) {
+            return;
+        }
+
+        // Follow same path as materialize_cheapest_inner
+        let (tid, row_idx) = match self.regraph.cost_select(eclass) {
+            Some(entry) => entry,
+            None => match self.regraph.find_defining_row(eclass) {
+                Some(entry) => entry,
+                None => return,
+            },
+        };
+
+        let table = self.regraph.get_table(tid);
+        let row = table.get_all_row(row_idx);
+
+        for (i, v) in row.0[..table.arity()].iter().enumerate() {
+            let ty = &table.table_def.1[i];
+            if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                let child_canon = self.regraph.find(*v);
+                *refs.entry(child_canon).or_insert(0) += 1;
+                self.count_eclass_refs_inner(child_canon, refs, visited);
+            }
+        }
+    }
+
+    /// Cost-aware materialization with let-bindings for shared eclasses.
+    /// Collects all shared bindings into a single top-level Let node — no nesting.
+    pub fn materialize_cheapest_with_lets(&self, eclass: Value) -> Term {
+        let canonical = self.regraph.find(eclass);
+        let ref_counts = self.count_eclass_refs(canonical);
+        let mut bindings: Map<Value, String> = Map::default();
+        let mut name_counter: usize = 0;
+        let mut pending_bindings: Vec<(String, Term)> = Vec::new();
+        let mut visited: Set<Value> = Set::default();
+
+        let root = self.build_term_with_lets(
+            canonical,
+            &ref_counts,
+            &mut bindings,
+            &mut name_counter,
+            &mut pending_bindings,
+            &mut visited,
+        );
+
+        if pending_bindings.is_empty() {
+            root
+        } else {
+            Term::Let(pending_bindings, Box::new(root))
+        }
+    }
+
+    fn build_term_with_lets(
+        &self,
+        eclass: Value,
+        ref_counts: &Map<Value, usize>,
+        bindings: &mut Map<Value, String>,
+        name_counter: &mut usize,
+        pending_bindings: &mut Vec<(String, Term)>,
+        visited: &mut Set<Value>,
+    ) -> Term {
+        if !visited.insert(eclass) {
+            return Term::Cyclic;
+        }
+
+        // Use cost_select to find the cheapest enode
+        let (tid, row_idx) = match self.regraph.cost_select(eclass) {
+            Some(entry) => entry,
+            None => {
+                // No cost info — fall back to scan-based let extraction
+                return self.build_term_scan_with_lets(
+                    eclass,
+                    ref_counts,
+                    bindings,
+                    name_counter,
+                    pending_bindings,
+                    visited,
+                );
+            }
+        };
+
+        let table = self.regraph.get_table(tid);
+        let row = table.get_all_row(row_idx);
+        let arity = table.arity();
+        let mut children = Vec::new();
+
+        for i in 0..arity {
+            let child_ty = &table.table_def.1[i];
+            let child_val = row.0[i];
+            if matches!(child_ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                let child_canon = self.regraph.find(child_val);
+                let child_ref_count = ref_counts.get(&child_canon).copied().unwrap_or(0);
+                if child_ref_count > 1 {
+                    // Shared child — introduce let binding
+                    if let Some(name) = bindings.get(&child_canon) {
+                        children.push(Term::Var(name.clone()));
+                    } else {
+                        let name = alloc::format!("_t{name_counter}");
+                        *name_counter += 1;
+                        bindings.insert(child_canon, name.clone());
+                        let binding = self.build_term_with_lets(
+                            child_canon,
+                            ref_counts,
+                            bindings,
+                            name_counter,
+                            pending_bindings,
+                            visited,
+                        );
+                        pending_bindings.push((name.clone(), binding));
+                        children.push(Term::Var(name));
+                    }
+                } else {
+                    // Not shared — recurse normally
+                    children.push(self.build_term_with_lets(
+                        child_canon,
+                        ref_counts,
+                        bindings,
+                        name_counter,
+                        pending_bindings,
+                        visited,
+                    ));
+                }
+            } else {
+                let base = child_ty.to_base_type();
+                children.push(Term::Literal(self.atom_from_value(child_val, &base)));
+            }
+        }
+
+        Term::App(table.table_def.0.clone(), children)
+    }
+
+    /// Fallback for build_term_with_lets when cost_select returns None.
+    /// Uses find_defining_row (scan-based) extraction with let-introduction.
+    fn build_term_scan_with_lets(
+        &self,
+        eclass: Value,
+        ref_counts: &Map<Value, usize>,
+        bindings: &mut Map<Value, String>,
+        name_counter: &mut usize,
+        pending_bindings: &mut Vec<(String, Term)>,
+        visited: &mut Set<Value>,
+    ) -> Term {
+        let Some((tid, row_idx)) = self.regraph.find_defining_row(eclass) else {
+            return Term::Literal(Atom::U64(eclass.0));
+        };
+
+        let table = self.regraph.get_table(tid);
+        let row = table.get_all_row(row_idx);
+        let mut children = Vec::new();
+
+        for (i, v) in row.0[..table.arity()].iter().enumerate() {
+            let ty = &table.table_def.1[i];
+            if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                let child_canon = self.regraph.find(*v);
+                let child_ref_count = ref_counts.get(&child_canon).copied().unwrap_or(0);
+                if child_ref_count > 1 {
+                    if let Some(name) = bindings.get(&child_canon) {
+                        children.push(Term::Var(name.clone()));
+                    } else {
+                        let name = alloc::format!("_t{name_counter}");
+                        *name_counter += 1;
+                        bindings.insert(child_canon, name.clone());
+                        let binding = self.build_term_scan_with_lets(
+                            child_canon,
+                            ref_counts,
+                            bindings,
+                            name_counter,
+                            pending_bindings,
+                            visited,
+                        );
+                        pending_bindings.push((name.clone(), binding));
+                        children.push(Term::Var(name));
+                    }
+                } else {
+                    children.push(self.build_term_scan_with_lets(
+                        child_canon,
+                        ref_counts,
+                        bindings,
+                        name_counter,
+                        pending_bindings,
+                        visited,
+                    ));
+                }
+            } else {
+                let base = ty.to_base_type();
+                children.push(Term::Literal(self.atom_from_value(*v, &base)));
+            }
+        }
+
+        Term::App(table.table_def.0.clone(), children)
+    }
+
+    /// Greedy (scan-based) extraction with let-bindings for shared eclasses.
+    pub fn extract_inner_with_lets(&self, id: Value) -> Term {
+        let canonical = self.regraph.find(id);
+        let ref_counts = self.count_eclass_refs_scan(canonical);
+        let mut bindings: Map<Value, String> = Map::default();
+        let mut name_counter: usize = 0;
+        let mut pending_bindings: Vec<(String, Term)> = Vec::new();
+        let mut visited: Set<Value> = Set::default();
+
+        let root = self.build_term_scan_with_lets(
+            canonical,
+            &ref_counts,
+            &mut bindings,
+            &mut name_counter,
+            &mut pending_bindings,
+            &mut visited,
+        );
+
+        if pending_bindings.is_empty() {
+            root
+        } else {
+            Term::Let(pending_bindings, Box::new(root))
+        }
+    }
+
+    /// Reference counting for scan-based extraction (find_defining_row path only).
+    fn count_eclass_refs_scan(&self, eclass: Value) -> Map<Value, usize> {
+        let mut refs: Map<Value, usize> = Map::default();
+        let mut visited: Set<Value> = Set::default();
+        self.count_eclass_refs_scan_inner(eclass, &mut refs, &mut visited);
+        refs
+    }
+
+    fn count_eclass_refs_scan_inner(
+        &self,
+        eclass: Value,
+        refs: &mut Map<Value, usize>,
+        visited: &mut Set<Value>,
+    ) {
+        if !visited.insert(eclass) {
+            return;
+        }
+
+        let Some((tid, row_idx)) = self.regraph.find_defining_row(eclass) else {
+            return;
+        };
+
+        let table = self.regraph.get_table(tid);
+        let row = table.get_all_row(row_idx);
+
+        for (i, v) in row.0[..table.arity()].iter().enumerate() {
+            let ty = &table.table_def.1[i];
+            if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
+                let child_canon = self.regraph.find(*v);
+                *refs.entry(child_canon).or_insert(0) += 1;
+                self.count_eclass_refs_scan_inner(child_canon, refs, visited);
+            }
+        }
     }
 
     /// Resolve a constructor name to a TableId.
