@@ -1,4 +1,6 @@
 use alloc::collections::BTreeMap;
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 use quine_core::common::{RowIndex, Value};
 use quine_core::related_egraph::{RelatedEGraph, TableId};
@@ -128,6 +130,10 @@ pub fn branch_and_bound(
 /// eclass, recursing into eclass-typed children and emitting literals
 /// for base-typed children via `atom_from_value`.
 ///
+/// Shared eclasses (identified by `dag.cse_edges`) are bound with `let`
+/// to avoid expression duplication in the output. All bindings are
+/// collected into a single flat `(let ([_t0 ...] ...) body)` node.
+///
 /// # Cycles
 /// A visited set guards against cycles (should not occur for valid DAGs,
 /// but e-graphs can contain self-referencing enodes). Cyclic references
@@ -145,24 +151,51 @@ pub fn extract_solution_from_dag(
         .map(|(i, node)| (node.canonical, i))
         .collect();
 
+    // Build set of shared eclass indices from cse_edges.
+    let cse_eclasses: BTreeMap<usize, ()> = dag
+        .cse_edges
+        .iter()
+        .map(|edge| (edge.child_eclass, ()))
+        .collect();
+
     let mut visited: BTreeMap<usize, ()> = BTreeMap::new();
-    build_term(
+    let mut bindings: BTreeMap<usize, String> = BTreeMap::new();
+    let mut name_counter: usize = 0;
+    let mut pending_bindings: Vec<(String, Term)> = Vec::new();
+
+    let root = build_term(
         dag,
         regraph,
         dag.root,
         &solution.enode_selection,
         &eclass_map,
+        &cse_eclasses,
+        &mut bindings,
+        &mut name_counter,
+        &mut pending_bindings,
         &mut visited,
-    )
+    );
+
+    if pending_bindings.is_empty() {
+        root
+    } else {
+        Term::Let(pending_bindings, alloc::boxed::Box::new(root))
+    }
 }
 
 /// Recursively build a `Term` from the solution's enode selections.
+/// Shared eclasses (in `cse_eclasses`) are bound once with `let` and
+/// referenced via `Term::Var` at all use sites.
 fn build_term(
     dag: &ExtractionDAG,
     regraph: &RelatedEGraph,
     eclass_idx: usize,
     selection: &[Option<(TableId, RowIndex)>],
     eclass_map: &BTreeMap<Value, usize>,
+    cse_eclasses: &BTreeMap<usize, ()>,
+    bindings: &mut BTreeMap<usize, String>,
+    name_counter: &mut usize,
+    pending_bindings: &mut Vec<(String, Term)>,
     visited: &mut BTreeMap<usize, ()>,
 ) -> Term {
     // Cycle guard: if we've already visited this eclass, emit a raw Value.
@@ -188,14 +221,43 @@ fn build_term(
                 if type_is_eclass(child_ty) {
                     let child_canon = regraph.find(child_val);
                     if let Some(&child_idx) = eclass_map.get(&child_canon) {
-                        children.push(build_term(
-                            dag,
-                            regraph,
-                            child_idx,
-                            selection,
-                            eclass_map,
-                            visited,
-                        ));
+                        if cse_eclasses.contains_key(&child_idx) {
+                            // Shared eclass — use let binding
+                            if let Some(name) = bindings.get(&child_idx) {
+                                children.push(Term::Var(name.clone()));
+                            } else {
+                                let name = format!("_t{name_counter}");
+                                *name_counter += 1;
+                                bindings.insert(child_idx, name.clone());
+                                let binding = build_term(
+                                    dag,
+                                    regraph,
+                                    child_idx,
+                                    selection,
+                                    eclass_map,
+                                    cse_eclasses,
+                                    bindings,
+                                    name_counter,
+                                    pending_bindings,
+                                    visited,
+                                );
+                                pending_bindings.push((name.clone(), binding));
+                                children.push(Term::Var(name));
+                            }
+                        } else {
+                            children.push(build_term(
+                                dag,
+                                regraph,
+                                child_idx,
+                                selection,
+                                eclass_map,
+                                cse_eclasses,
+                                bindings,
+                                name_counter,
+                                pending_bindings,
+                                visited,
+                            ));
+                        }
                     } else {
                         // Child eclass not in DAG (shouldn't happen for valid DAGs).
                         children.push(Term::Literal(Atom::U64(child_canon.0)));
