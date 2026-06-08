@@ -301,14 +301,9 @@ impl EngineContext {
             return Term::Cyclic;
         }
 
-        // Use cost_select to find the cheapest enode for this eclass
-        let (tid, row_idx) = match self.regraph.cost_select(eclass) {
-            Some(entry) => entry,
-            None => {
-                // No cost info — fall back to extract_inner (scan-based)
-                return self.extract_inner(eclass, visited);
-            }
-        };
+        // cost_select is always populated (computed at every insert).
+        let (tid, row_idx) = self.regraph.cost_select(eclass)
+            .expect("cost_select must have entry for every eclass");
 
         let table = self.regraph.get_table(tid);
         let row = table.get_all_row(row_idx);
