@@ -355,14 +355,9 @@ impl EngineContext {
             return;
         }
 
-        // Follow same path as materialize_cheapest_inner
-        let (tid, row_idx) = match self.regraph.cost_select(eclass) {
-            Some(entry) => entry,
-            None => match self.regraph.find_defining_row(eclass) {
-                Some(entry) => entry,
-                None => return,
-            },
-        };
+        // cost_select is always populated (computed at every insert).
+        let (tid, row_idx) = self.regraph.cost_select(eclass)
+            .expect("cost_select must have entry for every eclass");
 
         let table = self.regraph.get_table(tid);
         let row = table.get_all_row(row_idx);
@@ -416,21 +411,9 @@ impl EngineContext {
             return Term::Cyclic;
         }
 
-        // Use cost_select to find the cheapest enode
-        let (tid, row_idx) = match self.regraph.cost_select(eclass) {
-            Some(entry) => entry,
-            None => {
-                // No cost info — fall back to scan-based let extraction
-                return self.build_term_scan_with_lets(
-                    eclass,
-                    ref_counts,
-                    bindings,
-                    name_counter,
-                    pending_bindings,
-                    visited,
-                );
-            }
-        };
+        // cost_select is always populated (computed at every insert).
+        let (tid, row_idx) = self.regraph.cost_select(eclass)
+            .expect("cost_select must have entry for every eclass");
 
         let table = self.regraph.get_table(tid);
         let row = table.get_all_row(row_idx);
@@ -480,127 +463,6 @@ impl EngineContext {
         }
 
         Term::App(table.table_def.0.clone(), children)
-    }
-
-    /// Fallback for build_term_with_lets when cost_select returns None.
-    /// Uses find_defining_row (scan-based) extraction with let-introduction.
-    fn build_term_scan_with_lets(
-        &self,
-        eclass: Value,
-        ref_counts: &Map<Value, usize>,
-        bindings: &mut Map<Value, String>,
-        name_counter: &mut usize,
-        pending_bindings: &mut Vec<(String, Term)>,
-        visited: &mut Set<Value>,
-    ) -> Term {
-        let Some((tid, row_idx)) = self.regraph.find_defining_row(eclass) else {
-            return Term::Literal(Atom::U64(eclass.0));
-        };
-
-        let table = self.regraph.get_table(tid);
-        let row = table.get_all_row(row_idx);
-        let mut children = Vec::new();
-
-        for (i, v) in row.0[..table.arity()].iter().enumerate() {
-            let ty = &table.table_def.1[i];
-            if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
-                let child_canon = self.regraph.find(*v);
-                let child_ref_count = ref_counts.get(&child_canon).copied().unwrap_or(0);
-                if child_ref_count > 1 {
-                    if let Some(name) = bindings.get(&child_canon) {
-                        children.push(Term::Var(name.clone()));
-                    } else {
-                        let name = alloc::format!("_t{name_counter}");
-                        *name_counter += 1;
-                        bindings.insert(child_canon, name.clone());
-                        let binding = self.build_term_scan_with_lets(
-                            child_canon,
-                            ref_counts,
-                            bindings,
-                            name_counter,
-                            pending_bindings,
-                            visited,
-                        );
-                        pending_bindings.push((name.clone(), binding));
-                        children.push(Term::Var(name));
-                    }
-                } else {
-                    children.push(self.build_term_scan_with_lets(
-                        child_canon,
-                        ref_counts,
-                        bindings,
-                        name_counter,
-                        pending_bindings,
-                        visited,
-                    ));
-                }
-            } else {
-                let base = ty.to_base_type();
-                children.push(Term::Literal(self.atom_from_value(*v, &base)));
-            }
-        }
-
-        Term::App(table.table_def.0.clone(), children)
-    }
-
-    /// Greedy (scan-based) extraction with let-bindings for shared eclasses.
-    pub fn extract_inner_with_lets(&self, id: Value) -> Term {
-        let canonical = self.regraph.find(id);
-        let ref_counts = self.count_eclass_refs_scan(canonical);
-        let mut bindings: Map<Value, String> = Map::default();
-        let mut name_counter: usize = 0;
-        let mut pending_bindings: Vec<(String, Term)> = Vec::new();
-        let mut visited: Set<Value> = Set::default();
-
-        let root = self.build_term_scan_with_lets(
-            canonical,
-            &ref_counts,
-            &mut bindings,
-            &mut name_counter,
-            &mut pending_bindings,
-            &mut visited,
-        );
-
-        if pending_bindings.is_empty() {
-            root
-        } else {
-            Term::Let(pending_bindings, Box::new(root))
-        }
-    }
-
-    /// Reference counting for scan-based extraction (find_defining_row path only).
-    fn count_eclass_refs_scan(&self, eclass: Value) -> Map<Value, usize> {
-        let mut refs: Map<Value, usize> = Map::default();
-        let mut visited: Set<Value> = Set::default();
-        self.count_eclass_refs_scan_inner(eclass, &mut refs, &mut visited);
-        refs
-    }
-
-    fn count_eclass_refs_scan_inner(
-        &self,
-        eclass: Value,
-        refs: &mut Map<Value, usize>,
-        visited: &mut Set<Value>,
-    ) {
-        if !visited.insert(eclass) {
-            return;
-        }
-
-        let Some((tid, row_idx)) = self.regraph.find_defining_row(eclass) else {
-            return;
-        };
-
-        let table = self.regraph.get_table(tid);
-        let row = table.get_all_row(row_idx);
-
-        for (i, v) in row.0[..table.arity()].iter().enumerate() {
-            let ty = &table.table_def.1[i];
-            if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
-                let child_canon = self.regraph.find(*v);
-                *refs.entry(child_canon).or_insert(0) += 1;
-                self.count_eclass_refs_scan_inner(child_canon, refs, visited);
-            }
-        }
     }
 
     /// Resolve a constructor name to a TableId.
