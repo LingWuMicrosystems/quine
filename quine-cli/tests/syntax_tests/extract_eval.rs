@@ -24,7 +24,7 @@ fn setup_ctx(ctx: &mut EngineContext, source: &str) {
     let commands = parse_file(source).unwrap();
     for cmd in &commands {
         match cmd {
-            Command::Query(..) | Command::Extract(_) => {}
+            Command::Query(..) | Command::Extract(..) => {}
             _ => {
                 let unit = compile_command(
                     cmd,
@@ -44,7 +44,7 @@ fn setup_ctx(ctx: &mut EngineContext, source: &str) {
 /// Compile and apply an extract command, return result Term as string.
 fn do_extract(ctx: &mut EngineContext, source: &str) -> String {
     let commands = parse_file(source).unwrap();
-    let cmd = commands.iter().find(|c| matches!(c, Command::Extract(_))).unwrap();
+    let cmd = commands.iter().find(|c| matches!(c, Command::Extract(..))).unwrap();
     let unit = compile_command(
         cmd,
         &mut ctx.data_types,

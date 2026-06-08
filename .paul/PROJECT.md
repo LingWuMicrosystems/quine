@@ -44,6 +44,8 @@ Rust workspace with three crates:
 | 11 | ILP solver algorithm: Branch-and-Bound with Combinatorial Relaxation (B&B-CR) | Exploits DAG structure; relaxation is O(|E|) DAG shortest-path; no floating-point; branches on CSE ownership | 06 |
 | 12 | ILP solver crate: new quine-solver (no_std + alloc); all library crates share no_std stance | Consistent with quine-core/quine-frontend; alloc provides BinaryHeap, BTreeMap, Vec | 06 |
 | 13 | ILP extraction syntax: `extract optimal <expr>` — inline DSL, not CLI flag | Natural extension of existing `extract <expr>`; discoverable; no configuration needed | 06 |
+| 14 | CLI dispatches optimal extraction to ilp_extract (not EngineContext) | Avoids circular dependency: quine-solver → quine-frontend for Term | 08 |
+| 15 | build_extraction_dag pre-checks eclass_enodes().is_empty() before enqueuing children | Prevents empty EclassNode entries in DAG (fix #18); simplest approach without index remapping | 08 |
 
 ## DSL Syntax
 
@@ -72,8 +74,8 @@ rule edge(x, y) { set path(x, y) }
 | 05 — Expression Extraction (cost-aware evaluation) | ✅ Complete | 2026-06-03 |
 | 06 — ILP Solver Design Report | ✅ Complete | 2026-06-05 |
 | 07 — Solver Implementation | ✅ Complete | 2026-06-07 |
-| 08 — Solver Integration | 🔵 Planned | - |
-| 09 — Enhanced Extraction | 🔵 Planned | - |
+| 08 — Solver Integration | ✅ Complete | 2026-06-08 |
+| 09 — Enhanced Extraction | ✅ Complete | 2026-06-08 |
 
 ---
-*Last updated: 2026-06-07 after Phase 7*
+*Last updated: 2026-06-08 after Phase 9 — v0.3 complete*

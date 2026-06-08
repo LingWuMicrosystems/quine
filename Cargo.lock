@@ -527,6 +527,7 @@ dependencies = [
  "pest_derive",
  "quine-core",
  "quine-frontend",
+ "quine-solver",
  "reedline",
  "smallvec",
 ]

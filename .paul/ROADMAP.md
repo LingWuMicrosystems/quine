@@ -48,15 +48,15 @@ Plans: 1/1 complete — [05-01](.paul/phases/05-expression-extraction/05-01-SUMM
 ## Current Milestone
 
 **v0.3 — ILP Solver Enhanced Extraction**
-Status: 🚧 In Progress
-Phases: 2 of 4 complete
+Status: ✅ Complete
+Phases: 4 of 4 complete
 
 | # | Phase | Plans | Status | Completed |
 |---|-------|-------|--------|-----------|
 | 6 | ILP Solver Design Report | [06-01](.paul/phases/06-ilp-solver-design/06-01-SUMMARY.md) | ✅ Complete | 2026-06-05 |
 | 7 | Solver Implementation | [07-01](.paul/phases/07-ilp-solver-implementation/07-01-SUMMARY.md), [07-02](.paul/phases/07-ilp-solver-implementation/07-02-SUMMARY.md), [07-03](.paul/phases/07-ilp-solver-implementation/07-03-SUMMARY.md) | ✅ Complete | 2026-06-07 |
-| 8 | Solver Integration | TBD | Not started | - |
-| 9 | Enhanced Extraction | TBD | Not started | - |
+| 8 | Solver Integration | [08-01](.paul/phases/08-solver-integration/08-01-SUMMARY.md) | ✅ Complete | 2026-06-08 |
+| 9 | Enhanced Extraction | [09-01](.paul/phases/09-enhanced-extraction/09-01-SUMMARY.md) | ✅ Complete | 2026-06-08 |
 
 ### Phase 6: ILP Solver Design Report ✅
 
@@ -73,10 +73,10 @@ Plans: 3/3 complete — [07-01](.paul/phases/07-ilp-solver-implementation/07-01-
 Focus: Wire the ILP solver into the e-graph and extraction pipeline
 Plans: TBD (defined during /paul:plan)
 
-### Phase 9: Enhanced Extraction
+### Phase 9: Enhanced Extraction ✅
 
-Focus: ILP-based optimal expression extraction from the e-graph
-Plans: TBD (defined during /paul:plan)
+Focus: Wire ILPConfig fields, add integration tests
+Plans: 1/1 complete — [09-01](.paul/phases/09-enhanced-extraction/09-01-SUMMARY.md) wired time_limit_ms→B&B node budget, max_cse_edges_warning→user warning, 5 extract optimal integration tests; fuzz testing deferred
 
 ---
-*Last updated: 2026-06-07 after Phase 7*
+*Last updated: 2026-06-08 after Phase 9 — v0.3 complete*

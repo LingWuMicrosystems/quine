@@ -6,12 +6,14 @@ use quine_frontend::EngineContext;
 use quine_frontend::compile::compile_command;
 use quine_frontend::compile::head2query::heads2query;
 use quine_frontend::syntax::Command;
+use quine_frontend::syntax::ExtractMode;
 
 use quine_frontend::prelude::register_prelude;
 
 use quine_core::common::Set;
 use quine_core::rule::VariableRecord;
 use quine_core::table::Row;
+use quine_solver::{ilp_extract, ILPConfig};
 
 use directories::ProjectDirs;
 use reedline::{
@@ -99,7 +101,7 @@ fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), Str
         print_query_result(&var_record, rows, ctx);
         return Ok(());
     }
-    if let Command::Extract(_) = &cmd {
+    if let Command::Extract(..) = &cmd {
         let unit = compile_command(
             &cmd,
             &mut ctx.data_types,
@@ -110,7 +112,23 @@ fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), Str
         )
         .map_err(|e| format!("{:?}", e))?;
         ctx.apply(unit);
-        if let Some(ref term) = ctx.last_extract {
+        // Check if optimal (ILP) extraction is needed
+        if let Some((expr, ExtractMode::Optimal)) = ctx.last_extract_info.take() {
+            match ctx.evaluate_expr(&expr) {
+                Ok(root_eclass) => {
+                    let result = ilp_extract(&ctx.regraph, root_eclass, &ILPConfig::default());
+                    if let Some(ref warn) = result.warning {
+                        eprintln!("{warn}");
+                    }
+                    if let Some(term) = result.term {
+                        println!("{term}");
+                    } else {
+                        eprintln!("error: optimal extraction failed");
+                    }
+                }
+                Err(msg) => eprintln!("error: {msg}"),
+            }
+        } else if let Some(ref term) = ctx.last_extract {
             println!("{term}");
         }
         return Ok(());
@@ -138,7 +156,7 @@ fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<
                 let (var_record, rows) = ctx.query(&query, &vars);
                 print_query_result(&var_record, rows, ctx);
             }
-            Command::Extract(_) => {
+            Command::Extract(..) => {
                 let unit = compile_command(
                     &cmd,
                     &mut ctx.data_types,
@@ -149,7 +167,23 @@ fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<
                 )
                 .map_err(|e| format!("{:?}", e))?;
                 ctx.apply(unit);
-                if let Some(ref term) = ctx.last_extract {
+                // Check if optimal (ILP) extraction is needed
+                if let Some((expr, ExtractMode::Optimal)) = ctx.last_extract_info.take() {
+                    match ctx.evaluate_expr(&expr) {
+                        Ok(root_eclass) => {
+                            let result = ilp_extract(&ctx.regraph, root_eclass, &ILPConfig::default());
+                            if let Some(ref warn) = result.warning {
+                                eprintln!("{warn}");
+                            }
+                            if let Some(term) = result.term {
+                                println!("{term}");
+                            } else {
+                                eprintln!("error: optimal extraction failed");
+                            }
+                        }
+                        Err(msg) => eprintln!("error: {msg}"),
+                    }
+                } else if let Some(ref term) = ctx.last_extract {
                     println!("{term}");
                 }
             }

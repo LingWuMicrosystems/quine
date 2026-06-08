@@ -115,6 +115,15 @@ pub fn build_extraction_dag(
                     let child_val = row.0[col];
                     let child_canon = regraph.find(child_val);
 
+                    // Skip child eclasses with no enodes: they exist in
+                    // the union-find but have no rows in any table
+                    // (e.g., dummy child values in eclass-typed columns).
+                    // Without this check, the DAG would contain empty
+                    // EclassNode entries that break solver DP and B&B.
+                    if regraph.eclass_enodes(child_canon).is_empty() {
+                        continue;
+                    }
+
                     // Record parent → child for CSE detection.
                     // Dedup: skip if this (parent, enode) pair already
                     // recorded (e.g., `Add(A, A)` references A twice from

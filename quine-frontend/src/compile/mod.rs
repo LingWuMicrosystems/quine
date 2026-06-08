@@ -100,7 +100,7 @@ pub fn compile_command(
             }
             Ok(CompiledUnit::CostDef(def.clone()))
         }
-        Command::Extract(expr) => {
+        Command::Extract(expr, mode) => {
             // Validate: no variables allowed in extract expressions
             let vars = expr.extract_vars();
             if let Some(var) = vars.iter().next() {
@@ -108,7 +108,7 @@ pub fn compile_command(
             }
             // Validate: constructors referenced in the expression exist
             validate_extract_expr(expr, table_types, data_types)?;
-            Ok(CompiledUnit::Extract(expr.clone()))
+            Ok(CompiledUnit::Extract(expr.clone(), mode.clone()))
         }
         Command::Run(run) => Ok(CompiledUnit::Run(run.clone())),
     }

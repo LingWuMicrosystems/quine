@@ -54,8 +54,14 @@ pub fn branch_and_bound(
     node: &BnBNode,
     best: &mut Solution,
     stats: &mut BnBStats,
+    max_nodes: Option<u64>,
 ) {
     stats.nodes_explored += 1;
+
+    // Early termination: node budget exhausted (time_limit_ms proxy in no_std).
+    if max_nodes.map_or(false, |m| stats.nodes_explored >= m) {
+        return;
+    }
 
     // 1. Solve combinatorial relaxation at this node.
     let relaxed = solve_relaxation(dag, regraph, &node.fixed);
@@ -92,7 +98,7 @@ pub fn branch_and_bound(
             .entry(eclass_idx)
             .or_default()
             .cse = Some(CseDecision::NotShared);
-        branch_and_bound(dag, regraph, &child, best, stats);
+        branch_and_bound(dag, regraph, &child, best, stats, max_nodes);
     }
 
     // --- Branch B: OwnedBy each parent ---
@@ -112,7 +118,7 @@ pub fn branch_and_bound(
             .entry(parent_idx)
             .or_default()
             .selected = Some((tid, ridx));
-        branch_and_bound(dag, regraph, &child, best, stats);
+        branch_and_bound(dag, regraph, &child, best, stats, max_nodes);
     }
 }
 
@@ -297,7 +303,7 @@ mod tests {
         let mut best = Solution { enode_selection: vec![None; 2], cost: u64::MAX };
         let mut stats = BnBStats::default();
         let node = BnBNode { fixed: BTreeMap::new() };
-        branch_and_bound(&dag, &eg, &node, &mut best, &mut stats);
+        branch_and_bound(&dag, &eg, &node, &mut best, &mut stats, None);
 
         assert_eq!(best.cost, 10);
         assert_eq!(stats.nodes_explored, 1);
@@ -317,7 +323,7 @@ mod tests {
         let mut best = Solution { enode_selection: vec![None; n], cost: u64::MAX };
         let mut stats = BnBStats::default();
         let node = BnBNode { fixed: BTreeMap::new() };
-        branch_and_bound(&dag, &eg, &node, &mut best, &mut stats);
+        branch_and_bound(&dag, &eg, &node, &mut best, &mut stats, None);
 
         // Relaxation (greedy) cost without CSE adjustment: 25.
         // Optimal with CSE: 20 or less (one branch with OwnedBy).
@@ -341,7 +347,7 @@ mod tests {
         let mut best = Solution { enode_selection: vec![None; n], cost: 25 };
         let mut stats = BnBStats::default();
         let node = BnBNode { fixed: BTreeMap::new() };
-        branch_and_bound(&dag, &eg, &node, &mut best, &mut stats);
+        branch_and_bound(&dag, &eg, &node, &mut best, &mut stats, None);
 
         // The root relaxation has cost 25. Since best.cost = 25,
         // `relaxed.cost >= best.cost` → prune at root → 1 node only.

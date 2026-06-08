@@ -1,46 +1,45 @@
 ---
-status: transition_complete
+status: milestone_complete
 current_milestone: v0.3
-current_phase: 08-solver-integration
-last_updated: 2026-06-07
+current_phase: 09-enhanced-extraction
+last_updated: 2026-06-08
 ---
 
 ## Current Position
 
-Milestone: v0.3 ILP Solver Enhanced Extraction
-Phase: 8 of 9 (Solver Integration)
-Plan: Not started
-Status: Ready to plan Phase 8
-Last activity: 2026-06-07 — Phase 7 complete, transitioned to Phase 8
+Milestone: v0.3 ILP Solver Enhanced Extraction — ✅ Complete
+Phase: 9 of 9 (Enhanced Extraction) — Complete
+Plan: 09-01 — unified, loop closed
+Status: v0.3 complete. Ready for next milestone.
+Last activity: 2026-06-08 — Unified 09-01, closed v0.3
 
 Progress:
-- v0.3 ILP Solver Enhanced Extraction: [████████░░] 75%
+- v0.3 ILP Solver Enhanced Extraction: [██████████] 100%
 - Phase 6: [██████████] 100% (Design report complete)
 - Phase 7: [██████████] 100% (Solver implementation complete)
-- Phase 8: [░░░░░░░░░░] 0%
-- Phase 9: [░░░░░░░░░░] 0%
+- Phase 8: [██████████] 100% (Solver integration complete)
+- Phase 9: [██████████] 100% (Enhanced extraction complete)
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ○        ○        ○     [Ready for next PLAN — Phase 8]
+  ✓        ✓        ✓     [Loop closed — v0.3 milestone complete]
 ```
 
 ## Session Continuity
 
 Last session: 2026-06-08
-Stopped at: Phase 7 complete, Phase 8 ready to plan — session paused
-Next action: /paul:plan for Phase 8 (Solver Integration)
-Resume file: .paul/HANDOFF-2026-06-08.md
+Stopped at: Phase 9 unified, v0.3 milestone complete
+Next action: /paul:milestone to start v0.4, or /paul:consider-issues to review deferred work
+Resume file: .paul/phases/09-enhanced-extraction/09-01-SUMMARY.md
 Resume context:
-- Phase 7 delivered: quine-solver crate with B&B-CR solver, 28 tests, 0 failures
-- #16 FixedDecision enum→struct, #17 child_parents dedup fixed
-- #18 deferred: build_extraction_dag empty-eclass bug → fix in Phase 8
-- All library crates compile: zero errors, zero warnings
-- Branch: dev, last commit: 9a396ce (WIP pause)
-Git strategy: dev
+- v0.3 delivered: ILP solver design → implementation → integration → hardening
+- 38 tests passing across all crates, 0 failures, 0 warnings
+- 18 decisions recorded across 9 phases
+- Known issue: -liconv linker error on this machine (quine binary can't link)
+- Deferred: fuzz testing (random DAG + brute-force verification)
 
 ## Accumulated Context
 
@@ -68,14 +67,13 @@ Git strategy: dev
 | 18 | BDD Given/When/Then doc comments on all 26 test functions | 07-03 | 2026-06-07 |
 
 ### Git State
-Last commit: 4e39f52
-Branch: dev
-Feature branches: none
+Last commit: d0b53a2
+Branch: main
+Uncommitted: Phase 9 changes (quine-solver, quine-cli, tests, .paul/)
 
 ### Known Issues
 
 | # | Issue | Status | Fix in |
 |---|-------|--------|--------|
-| 16 | `FixedDecision` enum → struct (Selected + OwnedBy coexistence) | ✅ Fixed in relaxation.rs + solver.rs | 2026-06-07 |
-| 17 | `child_parents` duplicate (parent, enode) pairs causing false CSE edges | ✅ Fixed in dag.rs | — |
-| 18 | `build_extraction_dag` includes eclasses with 0 enodes (dummy child values) | Deferred | Phase 8 |
+| 1 | `-liconv` linker error prevents quine binary from linking on this machine | Known env issue | N/A |
+| 2 | Fuzz testing (random DAG + brute-force) not yet implemented | Deferred | Future phase |

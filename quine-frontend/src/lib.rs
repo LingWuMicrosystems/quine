@@ -24,7 +24,7 @@ use quine_core::types::*;
 
 use crate::env::{CompileEnv, TableEnv};
 use crate::interner::Interner;
-use crate::syntax::{Atom, AtomOrVariable, CostDef, Expr, FunctionCall};
+use crate::syntax::{Atom, AtomOrVariable, CostDef, Expr, ExtractMode, FunctionCall};
 use crate::term::Term;
 
 #[derive(Debug, Clone)]
@@ -40,7 +40,7 @@ pub enum CompiledUnit {
     Action(rule::Action),
     Run(Run),
     CostDef(CostDef),
-    Extract(Expr),
+    Extract(Expr, ExtractMode),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -63,6 +63,8 @@ pub struct EngineContext {
     pub native_signatures: Map<String, NativeSignature>,
     /// Result of the last `extract <expr>` evaluation (set by apply).
     pub last_extract: Option<Term>,
+    /// Info for the last extract command — consumed by CLI for optimal (ILP) extraction.
+    pub last_extract_info: Option<(Expr, ExtractMode)>,
 }
 
 impl EngineContext {
@@ -86,8 +88,12 @@ impl EngineContext {
                 let key = format!("{}.{}", def.type_name, def.constructor);
                 self.regraph.set_cost_model(key, def.cost);
             }
-            CompiledUnit::Extract(expr) => {
+            CompiledUnit::Extract(expr, ExtractMode::Greedy) => {
                 self.last_extract = Some(self.evaluate_and_extract(&expr));
+                self.last_extract_info = None;
+            }
+            CompiledUnit::Extract(expr, ExtractMode::Optimal) => {
+                self.last_extract_info = Some((expr.clone(), ExtractMode::Optimal));
             }
         }
     }

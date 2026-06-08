@@ -26,7 +26,7 @@ fn ac1_extract_nested_expr_parses() {
     let commands = parse_file(input).unwrap();
     assert_eq!(commands.len(), 1);
     match &commands[0] {
-        Command::Extract(expr) => {
+        Command::Extract(expr, _) => {
             // Verify it's a FunctionCall with two args
             match expr {
                 quine_frontend::syntax::Expr::FunctionCall(call) => {
@@ -71,7 +71,7 @@ fn ac3_extract_atom_literal() {
     let commands = parse_file(input).unwrap();
     assert_eq!(commands.len(), 1);
     match &commands[0] {
-        Command::Extract(expr) => {
+        Command::Extract(expr, _) => {
             match expr {
                 quine_frontend::syntax::Expr::AtomOrVariable(AtomOrVariable::Atom(Atom::I32(42))) => {}
                 other => panic!("expected AtomOrVariable::Atom(I32(42)), got {:?}", other),
@@ -141,7 +141,7 @@ fn ac5_extract_compiles() {
     .unwrap();
 
     match unit {
-        CompiledUnit::Extract(expr) => {
+        CompiledUnit::Extract(expr, _) => {
             // Verify it's the expected Expr structure
             match expr {
                 quine_frontend::syntax::Expr::FunctionCall(call) => {
@@ -170,7 +170,7 @@ fn ac6_extract_variable_name() {
     let commands = parse_file(input).unwrap();
     assert_eq!(commands.len(), 1);
     match &commands[0] {
-        Command::Extract(expr) => {
+        Command::Extract(expr, _) => {
             match expr {
                 quine_frontend::syntax::Expr::AtomOrVariable(AtomOrVariable::Variable(v)) => {
                     assert_eq!(v, "x");

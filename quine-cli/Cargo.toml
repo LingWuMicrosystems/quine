@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 quine-core = { workspace = true, features = ["std"] }
 quine-frontend = { workspace = true }
+quine-solver = { workspace = true }
 
 pest = { version = "2.7" }
 pest_derive = { version = "2.7" }

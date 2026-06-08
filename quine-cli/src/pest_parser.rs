@@ -3,7 +3,7 @@ use pest_derive::Parser;
 use quine_core::{rule::Op, types::*};
 
 use quine_frontend::syntax::{
-    Atom, AtomOrVariable, Body, Command, ConstructorPattern, CostDef, Expr, FunctionCall, Head,
+    Atom, AtomOrVariable, Body, Command, ConstructorPattern, CostDef, Expr, ExtractMode, FunctionCall, Head,
     Pattern, Rule as SyntaxRule, Span,
 };
 use quine_core::related_egraph::RunMode;
@@ -302,8 +302,17 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
         }
         Rule::cost_def => Command::CostDef(parse_cost_def(inner)),
         Rule::extract_query => {
-            let expr = parse_expr(inner.into_inner().next().unwrap());
-            Command::Extract(expr)
+            let mut inners = inner.into_inner();
+            let first = inners.next().unwrap();
+            // If the first inner is the "optimal" keyword, parse as optimal extract;
+            // otherwise it's the expr (greedy extract).
+            let (mode, expr_pair) = if first.as_str() == "optimal" {
+                (ExtractMode::Optimal, inners.next().unwrap())
+            } else {
+                (ExtractMode::Greedy, first)
+            };
+            let expr = parse_expr(expr_pair);
+            Command::Extract(expr, mode)
         }
         _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),
     }

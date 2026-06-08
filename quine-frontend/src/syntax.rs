@@ -26,6 +26,12 @@ impl Span {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ExtractMode {
+    Greedy,
+    Optimal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Command {
     TypeDef(String, TypeDef),
     TableDef(String, TableDef),
@@ -34,7 +40,7 @@ pub enum Command {
     Query(Heads, Vec<String>),
     Run(Run),
     CostDef(CostDef),
-    Extract(Expr),
+    Extract(Expr, ExtractMode),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -330,7 +336,8 @@ impl Display for Command {
             }
             Command::Run(..) => write!(f, "run"),
             Command::CostDef(def) => write!(f, "{def}"),
-            Command::Extract(expr) => write!(f, "extract {expr}"),
+            Command::Extract(expr, ExtractMode::Greedy) => write!(f, "extract {expr}"),
+            Command::Extract(expr, ExtractMode::Optimal) => write!(f, "extract optimal {expr}"),
         }
     }
 }
