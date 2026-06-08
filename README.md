@@ -99,10 +99,25 @@ Costs are maintained eagerly at every insert and union operation. The cheapest e
 
 ```
 extract Expr.Add(Expr.Const(0i32), Expr.Const(4i32))
-extract 42i32
+extract optimal Expr.Add(Expr.Const(0i32), Expr.Const(4i32))
 ```
 
 Extract the lowest-cost expression equivalent to the given value from the e-graph. Provide a concrete expression (constructor calls with literal arguments), and the system uses defined cost models to find and return the cheapest equivalent form.
+
+Two extraction modes:
+
+| Mode | Syntax | Algorithm | Output |
+|------|--------|-----------|--------|
+| Greedy | `extract <expr>` | DP on cost_select | Cheapest per-eclass (may be suboptimal when sub-expressions are shared) |
+| Optimal | `extract optimal <expr>` | B&B-CR ILP solver | Globally optimal, accounts for common sub-expression costs |
+
+The `extract optimal` solver uses Branch-and-Bound with Combinatorial Relaxation (B&B-CR): drops CSE coupling to form a DAG shortest-path relaxation (lower bound), then branches on shared eclasses to find the global optimum.
+
+Shared sub-expressions (eclasses referenced by multiple parent enodes) are automatically bound with `let` in the output to avoid expression duplication:
+
+```
+(let ([_t0 (+ a b)]) (f _t0 _t0))
+```
 
 ### Run
 
@@ -119,5 +134,6 @@ Triggers e-graph saturation: applies all rules until no new facts are produced.
 ## Build
 
 ```bash
+nix develop
 cargo build --release
 ```
