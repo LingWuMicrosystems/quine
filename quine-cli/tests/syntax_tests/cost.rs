@@ -48,7 +48,7 @@ fn ac1_cost_definition_parses_and_stores() {
     for cmd in &commands {
         compile_and_apply(&mut ctx, cmd).unwrap();
     }
-    assert_eq!(ctx.regraph.cost_models.get("Option.Some"), Some(&2));
+    assert_eq!(ctx.regraph.cost_tracker.cost_models.get("Option.Some"), Some(&2));
 }
 
 // ============================================================================
@@ -68,9 +68,9 @@ fn ac2_undefined_constructor_defaults_to_0() {
     for cmd in &commands {
         compile_and_apply(&mut ctx, cmd).unwrap();
     }
-    assert_eq!(ctx.regraph.cost_models.get("Option.Some"), Some(&2));
+    assert_eq!(ctx.regraph.cost_tracker.cost_models.get("Option.Some"), Some(&2));
     // Absent -> defaults to 0 via unwrap_or(0)
-    assert_eq!(ctx.regraph.cost_models.get("Option.None"), None);
+    assert_eq!(ctx.regraph.cost_tracker.cost_models.get("Option.None"), None);
 }
 
 // ============================================================================
@@ -170,7 +170,7 @@ fn ac7_cost_zero_parses() {
     for cmd in &commands {
         compile_and_apply(&mut ctx, cmd).unwrap();
     }
-    assert_eq!(ctx.regraph.cost_models.get("Option.None"), Some(&0));
+    assert_eq!(ctx.regraph.cost_tracker.cost_models.get("Option.None"), Some(&0));
 }
 
 // ============================================================================

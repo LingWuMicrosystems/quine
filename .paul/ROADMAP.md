@@ -98,18 +98,18 @@ Plans: 1/1 complete — [10-01](.paul/phases/10-term-let/10-01-SUMMARY.md) added
 ## Milestone: v0.5 — Refactor & Simplify 🚧
 
 Status: 🚧 In Progress
-Phases: 0 of 3 complete (2 plans executed)
+Phases: 1 of 3 complete
 
 | # | Phase | Plans | Status | Completed |
 |---|-------|-------|--------|-----------|
-| 11 | Core Engine Simplification | [11-01](.paul/phases/11-core-simplification/11-01-PLAN.md), [11-02](.paul/phases/11-core-simplification/11-02-PLAN.md) | Planning | - |
+| 11 | Core Engine Simplification | [11-01](.paul/phases/11-core-simplification/11-01-PLAN.md), [11-02](.paul/phases/11-core-simplification/11-02-PLAN.md), [11-03](.paul/phases/11-core-simplification/11-03-PLAN.md) | ✅ Complete | 2026-06-13 |
 | 12 | Solver Simplification | TBD | Not started | - |
 | 13 | Frontend & CLI Consolidation | TBD | Not started | - |
 
-### Phase 11: Core Engine Simplification
+### Phase 11: Core Engine Simplification ✅
 
 Focus: Split `related_egraph.rs` (892 lines), tighten APIs, and remove dead paths
-Plans: TBD (defined during /paul:plan)
+Plans: 3/3 complete — [11-01](.paul/phases/11-core-simplification/11-01-SUMMARY.md) (CostTracker → cost.rs, −160 lines), [11-02](.paul/phases/11-core-simplification/11-02-SUMMARY.md) (ReverseIndex → reverse_index.rs, −32 lines), [11-03](.paul/phases/11-core-simplification/11-03-SUMMARY.md) (insert/union/fresh_id delegation, −48 lines). Total: 892 → 641 (−251 lines, −28%)
 
 ### Phase 12: Solver Simplification
 

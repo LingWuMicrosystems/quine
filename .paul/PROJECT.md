@@ -81,5 +81,7 @@ rule edge(x, y) { set path(x, y) }
 | 09 — Enhanced Extraction | ✅ Complete | 2026-06-08 |
 | 10 — Term::Let Extraction | ✅ Complete | 2026-06-08 |
 
+| 11 | Core Engine Simplification | ✅ Complete | 2026-06-13 |
+
 ---
-*Last updated: 2026-06-08 after Phase 10 — v0.4 complete*
+*Last updated: 2026-06-13 after Phase 11*

@@ -177,6 +177,17 @@ impl ActionCtx<'_> {
 
 
 impl RelatedEGraph {
+    fn action_ctx(&mut self) -> ActionCtx<'_> {
+        ActionCtx {
+            tables: &mut self.tables,
+            union_find: &mut self.union_find,
+            pending_unions: &mut self.pending_unions,
+            native_functions: &self.native_functions,
+            reverse_index: &mut self.reverse_index,
+            cost_tracker: &mut self.cost_tracker,
+        }
+    }
+
     pub fn add_table(&mut self, table_def: TableDef) {
         self.tables.push(Table::new(table_def));
     }
@@ -249,6 +260,9 @@ impl RelatedEGraph {
             // Phase 2: apply actions (always serial)
             for ((_driver_table, rule_id), rows) in pairs.iter().zip(results) {
                 let action = &self.ruleset.get(*rule_id).unwrap().action;
+                // Inline ActionCtx construction: cannot use action_ctx() here
+                // because `action` borrows self.ruleset immutably while
+                // action_ctx() would borrow all of self mutably.
                 let mut ctx = ActionCtx {
                     tables: &mut self.tables,
                     union_find: &mut self.union_find,
@@ -278,14 +292,7 @@ impl RelatedEGraph {
     }
 
     pub fn apply_action(&mut self, action: &Action, rows: Set<Row>) {
-        let mut ctx = ActionCtx {
-            tables: &mut self.tables,
-            union_find: &mut self.union_find,
-            pending_unions: &mut self.pending_unions,
-            native_functions: &self.native_functions,
-            reverse_index: &mut self.reverse_index,
-            cost_tracker: &mut self.cost_tracker,
-        };
+        let mut ctx = self.action_ctx();
         ctx.apply_action(action, rows);
     }
 
@@ -432,66 +439,13 @@ impl RelatedEGraph {
     }
 
     pub fn insert(&mut self, table_id: usize, key: Row, value: Value) {
-        let table = &mut self.tables[table_id];
-        let arity = table.arity();
-        debug_assert_eq!(key.0.len(), arity);
-
-        let col = table.column_count();
-        let existing_idx = table.key_index.get(&key).copied();
-        let old_canonical =
-            existing_idx.map(|idx| self.union_find.find(table.rows[idx.0 * col + arity]));
-        let new_canonical = self.union_find.find(value);
-
-        match table.insert(&mut self.union_find, key, value) {
-            ModifyState::NewRow(idx) => {
-                let start = idx.0 * col;
-                for i in 0..col {
-                    let ty = &table.table_def.1[i];
-                    if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
-                        let v = table.rows[start + i];
-                        table.parents.entry(v).or_default().push(idx);
-                    }
-                }
-                // Track enode reference: value column -> reverse_index
-                let value_type = &table.table_def.1[arity];
-                if matches!(value_type, Type::Name(_) | Type::Base(BaseType::Id)) {
-                    let canonical = self.union_find.find(value);
-                    self.reverse_index.insert(canonical, table_id, idx);
-
-                    // compute enode cost and update eclass minimum
-                    self.cost_tracker.compute_and_update_eclass_cost(
-                        &self.tables,
-                        &self.union_find,
-                        table_id,
-                        idx,
-                    );
-                }
-            }
-            ModifyState::UnionRow(_) => {
-                if let Some(old) = old_canonical {
-                    if old != new_canonical {
-                        let pair = if old < new_canonical {
-                            (old, new_canonical)
-                        } else {
-                            (new_canonical, old)
-                        };
-                        self.pending_unions.push(pair);
-                    }
-                }
-            }
-            ModifyState::MergeRow(_) | ModifyState::NoModify => {}
-        }
+        let mut ctx = self.action_ctx();
+        ctx.insert(table_id, key, value);
     }
 
     pub fn union(&mut self, old: Value, new: Value) {
-        if let Some((parent, child)) = self.union_find.union(old, new) {
-            self.reverse_index.merge(parent, child);
-
-            // Merge eclass costs eagerly
-            self.cost_tracker.merge_eclass_cost(parent, child);
-
-            self.pending_unions.push((parent, child));
-        }
+        let mut ctx = self.action_ctx();
+        ctx.union(old, new);
     }
 
     pub fn rebuild(&mut self) -> Set<TableId> {
@@ -615,9 +569,7 @@ impl RelatedEGraph {
 
     /// Allocate a fresh eclass ID registered with the union-find.
     pub fn fresh_id(&mut self) -> Value {
-        let id = Value(self.union_find.parents.len() as u64);
-        self.union_find.add(id);
-        id
+        self.action_ctx().alloc_id()
     }
 
     // canonicalize the eclass value
