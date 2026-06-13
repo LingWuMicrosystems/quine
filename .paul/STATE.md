@@ -1,43 +1,43 @@
 ---
-status: milestone_complete
-current_milestone: v0.4
-current_phase: 10-term-let
-last_updated: 2026-06-08
+status: in_progress
+current_milestone: v0.5
+current_phase: 11-core-simplification
+last_updated: 2026-06-13
 ---
 
 ## Current Position
 
-Milestone: v0.4 Extraction Ergonomics — ✅ Complete
-Phase: 10 of 1 (Term::Let Extraction) — Complete
-Plan: 10-01 — unified, loop closed
-Status: Phase complete. v0.4 complete.
-Last activity: 2026-06-08 — Unified 10-01, closed v0.4
+Milestone: v0.5 Refactor & Simplify — 🚧 In Progress
+Phase: 11 of 3 (Core Engine Simplification) — Plan 11-02 closed
+Plan: 11-02 closed
+Status: Loop closed, ready for next PLAN
+Last activity: 2026-06-13 — Closed 11-02 loop (UNIFY)
 
 Progress:
-- v0.4 Extraction Ergonomics: [██████████] 100%
-- Phase 10: [██████████] 100% (Term::Let)
+- v0.5 Refactor & Simplify: [████░░░░░░] 33%
+- Phase 11: [██████████] 67% (Core Engine Simplification — 2 of ~3 plans)
+- Phase 12: [░░░░░░░░░░] 0% (Solver Simplification)
+- Phase 13: [░░░░░░░░░░] 0% (Frontend & CLI Consolidation)
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Loop closed — v0.4 milestone complete]
+  ✓        ✓        ✓     [Loop complete — ready for next PLAN]
 ```
 
 ## Session Continuity
 
-Last session: 2026-06-08
-Stopped at: v0.4 milestone complete, session paused
-Next action: /paul:resume → /paul:milestone (v0.5)
-Resume file: .paul/HANDOFF-2026-06-08.md
+Last session: 2026-06-13
+Stopped at: 11-02 loop closed, session paused
+Next action: /paul:resume → /paul:plan for Phase 11 plan 03
+Resume file: .paul/HANDOFF-2026-06-13.md
 Resume context:
-- v0.4 delivered: Term::Let + Term::Var, flat let display, two-pass extraction
-- Both greedy and optimal paths wired with let-binding
-- Dead scan-fallback code removed (~150 lines) — cost_select always populated
-- README updated with extract optimal + let docs
-- 46 tests passing, 5 integration tests compile-ready (blocked by -liconv)
-- Decision #10 superseded (no more extract_inner fallback)
+- 11-01 extracted CostTracker into cost.rs, 11-02 extracted ReverseIndex into reverse_index.rs
+- related_egraph.rs trimmed 892→689 lines across both plans
+- Two extraction patterns established: struct + methods taking read-only deps as params
+- 46/46 tests pass; 11-03 ready: remaining duplication + API tightening
 
 ## Accumulated Context
 

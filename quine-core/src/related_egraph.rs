@@ -10,6 +10,8 @@ use rayon::prelude::*;
 
 use crate::{
     common::{Map, RowIndex, Set, Value, VarId},
+    cost::CostTracker,
+    reverse_index::ReverseIndex,
     rule::{Action, ActionTail, Constraint, FunctionCall, Op, Query, Rule},
     table::{ModifyState, Row, Table},
     types::{BaseType, MergeFn, TableDef, Type},
@@ -44,24 +46,9 @@ pub struct RelatedEGraph {
     pub rule_groups: Map<GroupName, RuleGroup>,
 
     // any canonical eclass -> all enode references of it
-    reverse_index: Map<Value, Set<(TableId, RowIndex)>>,
+    reverse_index: ReverseIndex,
 
-    /// Constructor cost models: "TypeName.ConsName" -> u64
-    pub cost_models: Map<String, u64>,
-
-    // Cost lattice: (u64, ⊑, ⊥, ⊤, ⊔)
-    //   Partial order: a ⊑ b iff a >= b  (reverse numeric: cheaper = more precise)
-    //   Join (⊔): min(a, b)
-    //   Bottom (⊥): u64::MAX  (identity: min(MAX, x) = x)
-    //   Top (⊤): 0  (fully-known, cheapest possible)
-    //   Addition (+): saturating_add  (MAX + anything = MAX)
-    //
-    // Fixed-point: costs monotonically move from ⊥ toward ⊤ (decrease numerically).
-    // Initialized lazily — absent key means ⊥ (u64::MAX).
-    /// Per-eclass minimum cost. Absent = u64::MAX (⊥). Monotonically decreases.
-    eclass_cost: Map<Value, u64>,
-    /// Which enode achieves eclass_cost[eclass]. None if eclass has no enodes.
-    cost_select: Map<Value, (TableId, RowIndex)>,
+    pub cost_tracker: CostTracker,
 }
 
 /// Mutable state needed exclusively by action application.
@@ -73,12 +60,10 @@ struct ActionCtx<'a> {
     native_functions: &'a [NativeFn],
 
     // any canonical eclass -> all enode references of it
-    reverse_index: &'a mut Map<Value, Set<(TableId, RowIndex)>>,
+    reverse_index: &'a mut ReverseIndex,
 
     // Cost tracking (eager incremental maintenance)
-    cost_models: &'a Map<String, u64>,
-    eclass_cost: &'a mut Map<Value, u64>,
-    cost_select: &'a mut Map<Value, (TableId, RowIndex)>,
+    cost_tracker: &'a mut CostTracker,
 }
 
 impl ActionCtx<'_> {
@@ -114,13 +99,11 @@ impl ActionCtx<'_> {
                 let value_type = &table.table_def.1[arity];
                 if matches!(value_type, Type::Name(_) | Type::Base(BaseType::Id)) {
                     let canonical = self.union_find.find(value);
-                    self.reverse_index
-                        .entry(canonical)
-                        .or_default()
-                        .insert((table_id, idx));
+                    self.reverse_index.insert(canonical, table_id, idx);
 
-                    // NEW: compute enode cost and update eclass minimum
-                    self.compute_and_update_eclass_cost(table_id, idx);
+                    // compute enode cost and update eclass minimum
+                    self.cost_tracker
+                        .compute_and_update_eclass_cost(&self.tables, self.union_find, table_id, idx);
                 }
             }
             ModifyState::UnionRow(_) => {
@@ -139,68 +122,14 @@ impl ActionCtx<'_> {
         }
     }
 
-    /// Compute the cost of the enode at (table_id, row_idx) and update
-    /// eclass_cost / cost_select if it's cheaper than the current minimum.
-    fn compute_and_update_eclass_cost(&mut self, table_id: TableId, row_idx: RowIndex) {
-        let table = &self.tables[table_id];
-        let col = table.column_count();
-        let arity = table.arity();
-        let start = row_idx.0 * col;
-        let value = table.rows[start + arity];
-        let canonical = self.union_find.find(value);
-
-        let constructor_cost = self
-            .cost_models
-            .get(&table.table_def.0)
-            .copied()
-            .unwrap_or(0);
-
-        let mut enode_cost = constructor_cost;
-        for i in 0..arity {
-            let child_ty = &table.table_def.1[i];
-            if matches!(child_ty, Type::Name(_) | Type::Base(BaseType::Id)) {
-                let child_canon = self.union_find.find(table.rows[start + i]);
-                enode_cost = enode_cost.saturating_add(
-                    self.eclass_cost.get(&child_canon).copied().unwrap_or(u64::MAX),
-                );
-            }
-        }
-
-        let old = self.eclass_cost.get(&canonical).copied().unwrap_or(u64::MAX);
-        if enode_cost < old {
-            self.eclass_cost.insert(canonical, enode_cost);
-            self.cost_select.insert(canonical, (table_id, row_idx));
-        }
-    }
-
     fn union(&mut self, old: Value, new: Value) {
         if let Some((parent, child)) = self.union_find.union(old, new) {
-            // Merge reverse_index: child's enode refs move to parent.
-            if let Some(child_entries) = self.reverse_index.remove(&child) {
-                self.reverse_index
-                    .entry(parent)
-                    .or_default()
-                    .extend(child_entries);
-            }
+            self.reverse_index.merge(parent, child);
 
             // Merge eclass costs eagerly
-            self.merge_eclass_cost(parent, child);
+            self.cost_tracker.merge_eclass_cost(parent, child);
 
             self.pending_unions.push((parent, child));
-        }
-    }
-
-    /// Merge child eclass cost into parent: take min, keep cheaper cost_select.
-    fn merge_eclass_cost(&mut self, parent: Value, child: Value) {
-        let child_cost = self.eclass_cost.remove(&child).unwrap_or(u64::MAX);
-        let parent_entry = self.eclass_cost.entry(parent).or_insert(u64::MAX);
-        if child_cost < *parent_entry {
-            *parent_entry = child_cost;
-            if let Some(select) = self.cost_select.remove(&child) {
-                self.cost_select.insert(parent, select);
-            }
-        } else {
-            self.cost_select.remove(&child);
         }
     }
 
@@ -246,61 +175,6 @@ impl ActionCtx<'_> {
     }
 }
 
-/// Compute the cost of the enode at (table_id, row_idx) and update
-/// eclass_cost / cost_select if it's cheaper than the current minimum.
-fn compute_and_update_eclass_cost(
-    tables: &[Table],
-    union_find: &UnionFind,
-    cost_models: &Map<String, u64>,
-    eclass_cost: &mut Map<Value, u64>,
-    cost_select: &mut Map<Value, (TableId, RowIndex)>,
-    table_id: TableId,
-    row_idx: RowIndex,
-) {
-    let table = &tables[table_id];
-    let col = table.column_count();
-    let arity = table.arity();
-    let start = row_idx.0 * col;
-    let value = table.rows[start + arity];
-    let canonical = union_find.find(value);
-
-    let constructor_cost = cost_models.get(&table.table_def.0).copied().unwrap_or(0);
-
-    let mut enode_cost = constructor_cost;
-    for i in 0..arity {
-        let child_ty = &table.table_def.1[i];
-        if matches!(child_ty, Type::Name(_) | Type::Base(BaseType::Id)) {
-            let child_canon = union_find.find(table.rows[start + i]);
-            enode_cost = enode_cost
-                .saturating_add(eclass_cost.get(&child_canon).copied().unwrap_or(u64::MAX));
-        }
-    }
-
-    let old = eclass_cost.get(&canonical).copied().unwrap_or(u64::MAX);
-    if enode_cost < old {
-        eclass_cost.insert(canonical, enode_cost);
-        cost_select.insert(canonical, (table_id, row_idx));
-    }
-}
-
-/// Merge child eclass cost into parent: take min, keep cheaper cost_select.
-fn merge_eclass_cost_into(
-    eclass_cost: &mut Map<Value, u64>,
-    cost_select: &mut Map<Value, (TableId, RowIndex)>,
-    parent: Value,
-    child: Value,
-) {
-    let child_cost = eclass_cost.remove(&child).unwrap_or(u64::MAX);
-    let parent_entry = eclass_cost.entry(parent).or_insert(u64::MAX);
-    if child_cost < *parent_entry {
-        *parent_entry = child_cost;
-        if let Some(select) = cost_select.remove(&child) {
-            cost_select.insert(parent, select);
-        }
-    } else {
-        cost_select.remove(&child);
-    }
-}
 
 impl RelatedEGraph {
     pub fn add_table(&mut self, table_def: TableDef) {
@@ -381,9 +255,7 @@ impl RelatedEGraph {
                     pending_unions: &mut self.pending_unions,
                     native_functions: &self.native_functions,
                     reverse_index: &mut self.reverse_index,
-                    cost_models: &self.cost_models,
-                    eclass_cost: &mut self.eclass_cost,
-                    cost_select: &mut self.cost_select,
+                    cost_tracker: &mut self.cost_tracker,
                 };
                 ctx.apply_action(action, rows);
             }
@@ -412,9 +284,7 @@ impl RelatedEGraph {
             pending_unions: &mut self.pending_unions,
             native_functions: &self.native_functions,
             reverse_index: &mut self.reverse_index,
-            cost_models: &self.cost_models,
-            eclass_cost: &mut self.eclass_cost,
-            cost_select: &mut self.cost_select,
+            cost_tracker: &mut self.cost_tracker,
         };
         ctx.apply_action(action, rows);
     }
@@ -586,18 +456,12 @@ impl RelatedEGraph {
                 let value_type = &table.table_def.1[arity];
                 if matches!(value_type, Type::Name(_) | Type::Base(BaseType::Id)) {
                     let canonical = self.union_find.find(value);
-                    self.reverse_index
-                        .entry(canonical)
-                        .or_default()
-                        .insert((table_id, idx));
+                    self.reverse_index.insert(canonical, table_id, idx);
 
-                    // NEW: compute enode cost and update eclass minimum
-                    compute_and_update_eclass_cost(
+                    // compute enode cost and update eclass minimum
+                    self.cost_tracker.compute_and_update_eclass_cost(
                         &self.tables,
                         &self.union_find,
-                        &self.cost_models,
-                        &mut self.eclass_cost,
-                        &mut self.cost_select,
                         table_id,
                         idx,
                     );
@@ -621,16 +485,10 @@ impl RelatedEGraph {
 
     pub fn union(&mut self, old: Value, new: Value) {
         if let Some((parent, child)) = self.union_find.union(old, new) {
-            // Merge reverse_index: child's enode refs move to parent.
-            if let Some(child_entries) = self.reverse_index.remove(&child) {
-                self.reverse_index
-                    .entry(parent)
-                    .or_default()
-                    .extend(child_entries);
-            }
+            self.reverse_index.merge(parent, child);
 
             // Merge eclass costs eagerly
-            merge_eclass_cost_into(&mut self.eclass_cost, &mut self.cost_select, parent, child);
+            self.cost_tracker.merge_eclass_cost(parent, child);
 
             self.pending_unions.push((parent, child));
         }
@@ -661,15 +519,10 @@ impl RelatedEGraph {
                         if matches!(value_type, Type::Name(_) | Type::Base(BaseType::Id)) {
                             for (scanned_idx, (_existing_idx, _old, new)) in &pairs {
                                 let canonical = self.union_find.find(*new);
-                                self.reverse_index
-                                    .entry(canonical)
-                                    .and_modify(|s| {
-                                        s.remove(&(tid, *scanned_idx));
-                                    });
+                                self.reverse_index.remove(canonical, tid, *scanned_idx);
                                 // D1: Redirect cost_select from absorbed -> surviving enode
-                                if self.cost_select.get(&canonical) == Some(&(tid, *scanned_idx)) {
-                                    self.cost_select.insert(canonical, (tid, *_existing_idx));
-                                }
+                                self.cost_tracker
+                                    .cost_select_redirect(canonical, (tid, *scanned_idx), (tid, *_existing_idx));
                             }
                         }
                     }
@@ -707,22 +560,9 @@ impl RelatedEGraph {
                                 if let Some((parent, child)) =
                                     self.union_find.union(old, new)
                                 {
-                                    // Merge reverse_index: child's enode refs move to parent.
-                                    if let Some(child_entries) =
-                                        self.reverse_index.remove(&child)
-                                    {
-                                        self.reverse_index
-                                            .entry(parent)
-                                            .or_default()
-                                            .extend(child_entries);
-                                    }
+                                    self.reverse_index.merge(parent, child);
                                     // D2: Merge eclass costs eagerly
-                                    merge_eclass_cost_into(
-                                        &mut self.eclass_cost,
-                                        &mut self.cost_select,
-                                        parent,
-                                        child,
-                                    );
+                                    self.cost_tracker.merge_eclass_cost(parent, child);
                                     Some((parent, child))
                                 } else {
                                     None
@@ -784,32 +624,27 @@ impl RelatedEGraph {
     // and then returns all the enodes of it
     pub fn eclass_enodes(&self, eclass: Value) -> Set<(TableId, RowIndex)> {
         let canonical = self.union_find.find(eclass);
-        self.reverse_index
-            .get(&canonical)
-            .cloned()
-            .unwrap_or_default()
+        self.reverse_index.get(canonical)
     }
 
     /// Insert a cost model entry: "TypeName.ConsName" -> cost
     pub fn set_cost_model(&mut self, name: String, cost: u64) {
-        self.cost_models.insert(name, cost);
+        self.cost_tracker.set_cost_model(name, cost);
     }
 
     /// Look up the cost of a constructor. Returns 0 if not defined.
     pub fn get_constructor_cost(&self, table_name: &str) -> u64 {
-        self.cost_models.get(table_name).copied().unwrap_or(0)
+        self.cost_tracker.get_constructor_cost(table_name)
     }
 
     /// Get the current minimum cost of an eclass. Returns u64::MAX (⊥) if unknown.
     pub fn eclass_cost(&self, eclass: Value) -> u64 {
-        let canonical = self.union_find.find(eclass);
-        self.eclass_cost.get(&canonical).copied().unwrap_or(u64::MAX)
+        self.cost_tracker.eclass_cost(&self.union_find, eclass)
     }
 
     /// Get the cheapest enode for an eclass, if any.
     pub fn cost_select(&self, eclass: Value) -> Option<(TableId, RowIndex)> {
-        let canonical = self.union_find.find(eclass);
-        self.cost_select.get(&canonical).copied()
+        self.cost_tracker.cost_select(&self.union_find, eclass)
     }
 }
 
@@ -852,41 +687,3 @@ fn check_cross(lhs: Value, rhs: Value, op: Op) -> bool {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn lattice_join_bottom_identity() {
-        // min(u64::MAX, x) == x  (⊥ ⊔ x = x)
-        assert_eq!(min(u64::MAX, 42u64), 42);
-        assert_eq!(min(u64::MAX, 0u64), 0);
-    }
-
-    #[test]
-    fn lattice_join_bottom_bottom() {
-        // min(u64::MAX, u64::MAX) == u64::MAX  (⊥ ⊔ ⊥ = ⊥)
-        assert_eq!(min(u64::MAX, u64::MAX), u64::MAX);
-    }
-
-    #[test]
-    fn lattice_join_cheaper_wins() {
-        // min = cheaper (lower numeric cost)
-        assert_eq!(min(5u64, 3u64), 3);
-        assert_eq!(min(10u64, 10u64), 10);
-    }
-
-    #[test]
-    fn saturating_add_propagates_unknown() {
-        // u64::MAX.saturating_add(x) == u64::MAX (⊥ propagates)
-        assert_eq!(u64::MAX.saturating_add(5), u64::MAX);
-        assert_eq!(u64::MAX.saturating_add(0), u64::MAX);
-    }
-
-    #[test]
-    fn saturating_add_normal() {
-        // Normal cost propagation works
-        assert_eq!(5u64.saturating_add(10), 15);
-        assert_eq!(0u64.saturating_add(0), 0);
-    }
-}

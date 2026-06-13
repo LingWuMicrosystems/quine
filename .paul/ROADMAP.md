@@ -94,4 +94,32 @@ Focus: Let-binding for shared sub-expressions — `Term::Let` enables extraction
 Plans: 1/1 complete — [10-01](.paul/phases/10-term-let/10-01-SUMMARY.md) added Term::Let + Term::Var variants, two-pass let-aware extraction (reference counting + build), flat `(let ([name val] ...) body)` display, 5 new unit tests, 5 integration tests
 
 ---
-*Last updated: 2026-06-08 — v0.4 complete*
+
+## Milestone: v0.5 — Refactor & Simplify 🚧
+
+Status: 🚧 In Progress
+Phases: 0 of 3 complete (2 plans executed)
+
+| # | Phase | Plans | Status | Completed |
+|---|-------|-------|--------|-----------|
+| 11 | Core Engine Simplification | [11-01](.paul/phases/11-core-simplification/11-01-PLAN.md), [11-02](.paul/phases/11-core-simplification/11-02-PLAN.md) | Planning | - |
+| 12 | Solver Simplification | TBD | Not started | - |
+| 13 | Frontend & CLI Consolidation | TBD | Not started | - |
+
+### Phase 11: Core Engine Simplification
+
+Focus: Split `related_egraph.rs` (892 lines), tighten APIs, and remove dead paths
+Plans: TBD (defined during /paul:plan)
+
+### Phase 12: Solver Simplification
+
+Focus: Simplify `relaxation.rs` (637 lines) + `solver.rs` (460 lines); extract shared infrastructure, streamline the B&B loop
+Plans: TBD (defined during /paul:plan)
+
+### Phase 13: Frontend & CLI Consolidation
+
+Focus: Deduplicate across `lib.rs`, `syntax.rs`, `compile/`, and `pest_parser.rs`; unify patterns
+Plans: TBD (defined during /paul:plan)
+
+---
+*Last updated: 2026-06-13 — v0.5 milestone created*
