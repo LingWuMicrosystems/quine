@@ -9,10 +9,13 @@ use smallvec::{SmallVec, ToSmallVec};
 use rayon::prelude::*;
 
 use crate::{
-    common::{Map, RowIndex, Set, Value, VarId},
+    common::{ColumnIndex, Map, RowIndex, Set, Value, VarId},
     cost::CostTracker,
     reverse_index::ReverseIndex,
-    rule::{Action, ActionTail, Constraint, FunctionCall, Op, Query, Rule},
+    rule::{
+        Action, ActionTail, Constraint, CrossConstraint, FunctionCall, Op, Query, Rule,
+        ScanStep,
+    },
     table::{ModifyState, Row, Table},
     types::{BaseType, MergeFn, TableDef, Type},
     uf::UnionFind,
@@ -301,10 +304,9 @@ impl RelatedEGraph {
             return Set::default();
         }
 
-        // Step 0: initial scan.
+        // Stage 1: initial scan.
         let step0 = &query.scan_steps[0];
-        let table = &self.tables[step0.table];
-        let mut rows: Vec<Row> = table
+        let mut rows: Vec<Row> = self.tables[step0.table]
             .fused_scan(
                 &self.union_find,
                 &step0.columns,
@@ -312,10 +314,9 @@ impl RelatedEGraph {
                 delta_table == Some(step0.table),
             )
             .collect();
+        let mut result_vars = step0.var_binding.clone();
 
-        let mut result_vars = query.scan_steps[0].var_binding.clone();
-
-        // Subsequent steps: sideways information passing + hash join.
+        // Stage 2: for each subsequent step — scan, join, extend.
         for step in &query.scan_steps[1..] {
             let shared: Vec<(usize, usize)> = step
                 .var_binding
@@ -323,7 +324,6 @@ impl RelatedEGraph {
                 .enumerate()
                 .filter_map(|(sp, v)| result_vars.iter().position(|rv| rv == v).map(|rp| (sp, rp)))
                 .collect();
-
             let result_vars_set: Set<VarId> = result_vars.iter().copied().collect();
             let new_cols: Vec<usize> = step
                 .var_binding
@@ -333,86 +333,119 @@ impl RelatedEGraph {
                 .map(|(i, _)| i)
                 .collect();
 
-            // Scan with pushed-down constraints when a single shared
-            // variable allows sideways information passing.
-            let next_rows: Vec<Row> = if shared.len() == 1 {
+            // Sideways information passing: push-down constraints.
+            let next_rows = if shared.len() == 1 {
                 let (sp, rp) = shared[0];
                 let distinct: Set<Value> = rows.iter().map(|r| r.0[rp]).collect();
-                let col = step.columns[sp];
-                distinct
-                    .iter()
-                    .flat_map(|&v| {
-                        let table = &self.tables[step.table];
-                        let mut constraints = step.constraints.clone();
-                        constraints.push(Constraint {
-                            op: Op::Equ,
-                            column: col,
-                            value: v,
-                        });
-                        table
-                            .fused_scan(
-                                &self.union_find,
-                                &step.columns,
-                                &constraints,
-                                delta_table == Some(step.table),
-                            )
-                            .collect::<Vec<_>>()
-                    })
-                    .collect()
+                self.scan_step_table(step, delta_table, Some((step.columns[sp], &distinct)))
             } else {
-                let table = &self.tables[step.table];
-                table
-                    .fused_scan(
-                        &self.union_find,
-                        &step.columns,
-                        &step.constraints,
-                        delta_table == Some(step.table),
-                    )
-                    .collect()
+                self.scan_step_table(step, delta_table, None)
             };
 
-            // Hash join on shared variables.
-            if shared.is_empty() {
-                let mut new_rows = Vec::with_capacity(rows.len() * next_rows.len());
-                for left in &rows {
-                    for right in &next_rows {
-                        let mut r = left.clone();
-                        for &si in &new_cols {
-                            r.0.push(right.0[si]);
-                        }
-                        new_rows.push(r);
-                    }
-                }
-                rows = new_rows;
-            } else {
-                let mut hash: Map<SmallVec<[Value; 4]>, Vec<&Row>> = Map::default();
-                for right in &next_rows {
-                    let key: SmallVec<[Value; 4]> =
-                        shared.iter().map(|(sp, _)| right.0[*sp]).collect();
-                    hash.entry(key).or_default().push(right);
-                }
-                let mut new_rows = Vec::with_capacity(rows.len());
-                for left in &rows {
-                    let key: SmallVec<[Value; 4]> =
-                        shared.iter().map(|(_, rp)| left.0[*rp]).collect();
-                    if let Some(matches) = hash.get(&key) {
-                        for right in matches {
-                            let mut r = left.clone();
-                            for &si in &new_cols {
-                                r.0.push(right.0[si]);
-                            }
-                            new_rows.push(r);
-                        }
-                    }
-                }
-                rows = new_rows;
-            }
+            rows = Self::join_step_rows(rows, next_rows, &shared, &new_cols);
 
             for &si in &new_cols {
                 result_vars.push(step.var_binding[si]);
             }
         }
 
+        // Stage 3: filter and permute.
+        Self::filter_and_permute(rows, &query.constraints, &result_vars)
+    }
+
+    /// Scan a single query step's table, optionally with pushed-down
+    /// equality constraints for sideways information passing.
+    fn scan_step_table(
+        &self,
+        step: &ScanStep,
+        delta_table: Option<TableId>,
+        filter: Option<(ColumnIndex, &Set<Value>)>,
+    ) -> Vec<Row> {
+        let table = &self.tables[step.table];
+        if let Some((col, distinct)) = filter {
+            distinct
+                .iter()
+                .flat_map(|&v| {
+                    let mut constraints = step.constraints.clone();
+                    constraints.push(Constraint {
+                        op: Op::Equ,
+                        column: col,
+                        value: v,
+                    });
+                    table
+                        .fused_scan(
+                            &self.union_find,
+                            &step.columns,
+                            &constraints,
+                            delta_table == Some(step.table),
+                        )
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        } else {
+            table
+                .fused_scan(
+                    &self.union_find,
+                    &step.columns,
+                    &step.constraints,
+                    delta_table == Some(step.table),
+                )
+                .collect()
+        }
+    }
+
+    /// Join two row sets on shared variables: cross-product when no
+    /// variables are shared, hash join otherwise.
+    fn join_step_rows(
+        rows: Vec<Row>,
+        next_rows: Vec<Row>,
+        shared: &[(usize, usize)],
+        new_cols: &[usize],
+    ) -> Vec<Row> {
+        if shared.is_empty() {
+            let mut new_rows = Vec::with_capacity(rows.len() * next_rows.len());
+            for left in &rows {
+                for right in &next_rows {
+                    let mut r = left.clone();
+                    for &si in new_cols {
+                        r.0.push(right.0[si]);
+                    }
+                    new_rows.push(r);
+                }
+            }
+            new_rows
+        } else {
+            let mut hash: Map<SmallVec<[Value; 4]>, Vec<&Row>> = Map::default();
+            for right in &next_rows {
+                let key: SmallVec<[Value; 4]> =
+                    shared.iter().map(|(sp, _)| right.0[*sp]).collect();
+                hash.entry(key).or_default().push(right);
+            }
+            let mut new_rows = Vec::with_capacity(rows.len());
+            for left in &rows {
+                let key: SmallVec<[Value; 4]> =
+                    shared.iter().map(|(_, rp)| left.0[*rp]).collect();
+                if let Some(matches) = hash.get(&key) {
+                    for right in matches {
+                        let mut r = left.clone();
+                        for &si in new_cols {
+                            r.0.push(right.0[si]);
+                        }
+                        new_rows.push(r);
+                    }
+                }
+            }
+            new_rows
+        }
+    }
+
+    /// Filter rows by cross-constraints and permute columns into VarId
+    /// order, producing the final result set.
+    fn filter_and_permute(
+        rows: Vec<Row>,
+        constraints: &[CrossConstraint],
+        result_vars: &[VarId],
+    ) -> Set<Row> {
         // Build permutation: VarId -> current column position.
         // After join, columns are in discovery order, but VarId::resolve
         // indexes by VarId directly. Reorder so position i = VarId(i).
@@ -424,7 +457,7 @@ impl RelatedEGraph {
 
         rows.into_iter()
             .filter(|row| {
-                query.constraints.iter().all(|cs| {
+                constraints.iter().all(|cs| {
                     let Some(&lhs) = row.0.get(var_to_pos[cs.lhs.0]) else {
                         return true;
                     };

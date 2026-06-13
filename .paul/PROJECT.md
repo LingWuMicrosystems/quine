@@ -19,13 +19,13 @@ Rust workspace with three crates:
 
 ## Core Engine (`quine-core`)
 
-- **EGraph / equality saturation:** [`related_egraph.rs`](quine-core/src/related_egraph.rs) — relation-aware e-graph combining congruence closure with Datalog-style rule evaluation
+- **EGraph / equality saturation:** [`related_egraph.rs`](quine-core/src/related_egraph.rs) — relation-aware e-graph combining congruence closure with Datalog-style rule evaluation. `run_query` uses a 3-stage pipeline: scan → join → filter/permute.
 - **Rule engine:** [`rule.rs`](quine-core/src/rule.rs) — match-rewrite rules evaluated via semi-naïve evaluation
 - **Relations / tables:** [`table.rs`](quine-core/src/table.rs) — relational tables backing the Datalog layer
 - **Types:** [`types.rs`](quine-core/src/types.rs) — algebraic data types (`data Option = Some(value) \| None`)
 - **Union-Find:** [`uf.rs`](quine-core/src/uf.rs) — union-find for equivalence classes
-- **Reverse Index:** [`related_egraph.rs`](quine-core/src/related_egraph.rs) — `reverse_index` maps canonical eclass → set of `(table_id, row_index)` enode references, maintained through insert/union/rebuild. Query via `eclass_enodes(eclass)`.
-- **Cost Analysis:** [`related_egraph.rs`](quine-core/src/related_egraph.rs) — incremental cost computation via lattice fixpoint `(u64, min, u64::MAX)`. `eclass_cost` tracks minimum cost per eclass; `cost_select` maps eclass → cheapest enode. Costs maintained eagerly at insert/union/rebuild. Cost models stored as `Map<String, u64>` on `RelatedEGraph`.
+- **Reverse Index:** [`reverse_index.rs`](quine-core/src/reverse_index.rs) — `ReverseIndex` struct maps canonical eclass → set of `(table_id, row_index)` enode references. Maintained through `insert`/`merge`/`remove` lifecycle. Query via `eclass_enodes(eclass)`.
+- **Cost Analysis:** [`cost.rs`](quine-core/src/cost.rs) — `CostTracker` struct with incremental cost computation via lattice fixpoint `(u64, min, u64::MAX)`. `eclass_cost` tracks minimum cost per eclass; `cost_select` maps eclass → cheapest enode. Costs maintained eagerly at insert/union/rebuild. Cost models stored as `Map<String, u64>`.
 
 ## Key Decisions
 
@@ -84,4 +84,4 @@ rule edge(x, y) { set path(x, y) }
 | 11 | Core Engine Simplification | ✅ Complete | 2026-06-13 |
 
 ---
-*Last updated: 2026-06-13 after Phase 11*
+*Last updated: 2026-06-14 after Phase 11*
