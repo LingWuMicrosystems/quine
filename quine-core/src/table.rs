@@ -5,8 +5,8 @@ use smallvec::SmallVec;
 
 use crate::{
     common::{ColumnIndex, Map, RowIndex, Value},
-    rule::{Constraint, Op},
-    types::{BaseType, MergeFn, TableDef, Type},
+    rule::Constraint,
+    types::{MergeFn, TableDef, Type},
     uf::UnionFind,
 };
 
@@ -90,6 +90,8 @@ impl Table {
             let ty = &self.table_def.1[idx];
             if ty.is_id_type() {
                 result_vec.push(uf.find(row[idx]));
+            } else {
+                result_vec.push(row[idx]);
             }
         }
         Row(result_vec)
@@ -179,20 +181,20 @@ impl Table {
     }
 
     #[inline]
-    pub fn get_row_value(&self, row_index:RowIndex) -> Value {
-        let idx = row_index.0 * (self.column_count() + 1) -1;
+    pub fn get_row_value(&self, row_index: RowIndex) -> Value {
+        let idx = row_index.0 * self.column_count() + self.arity();
         self.rows[idx]
     }
 
     #[inline]
     pub fn get_value_type(&self) -> &Type {
-        &self.table_def.1[self.column_count()]
+        &self.table_def.1[self.arity()]
     }
 
     #[inline]
     pub fn get_canonicalized_row_value(&self, uf: &UnionFind, row_index: RowIndex) -> Value {
         let v = self.get_row_value(row_index);
-        if (self.get_value_type().is_id_type()) {
+        if self.get_value_type().is_id_type() {
             uf.find(v)
         } else {
             v

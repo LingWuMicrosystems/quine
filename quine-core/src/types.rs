@@ -24,8 +24,8 @@ impl MergeFn {
     pub fn interp(&self, lhs: &Value, rhs: &Value) -> Value{
         let (a,b) = (lhs.0, rhs.0);
         let v = match self {
-            MergeFn::Min => std::cmp::min(a, b),
-            MergeFn::Max => std::cmp::max(a, b),
+            MergeFn::Min => core::cmp::min(a, b),
+            MergeFn::Max => core::cmp::max(a, b),
         };
         Value(v)
     }

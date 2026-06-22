@@ -1,9 +1,7 @@
-use core::cmp::{max, min};
-
 /// related e-graph
 use alloc::string::String;
 use alloc::vec::Vec;
-use smallvec::{SmallVec, ToSmallVec};
+use smallvec::SmallVec;
 
 #[cfg(feature = "std")]
 use rayon::prelude::*;
@@ -16,7 +14,7 @@ use crate::{
         Action, ActionTail, Constraint, CrossConstraint, FunctionCall, Op, Query, Rule, ScanStep,
     },
     table::{ModifyState, Row, Table},
-    types::{BaseType, MergeFn, TableDef, Type},
+    types::{BaseType, TableDef, Type},
     uf::UnionFind,
 };
 
@@ -630,11 +628,12 @@ impl RelatedEGraph {
 }
 
 fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(RowIndex, Value, Value)> {
-    let key = table.get_row_key(idx);
-    let existing = table.key_index.get(&key)?;
+    let raw_key = table.get_row_key(idx);
+    let canonical_key = table.canonicalize_row(uf, &raw_key.0);
+    let existing = table.key_index.get(&canonical_key)?;
     if *existing != idx {
         let old = table.get_row_value(*existing);
-        let new = table.get_canonicalized_row_value(uf,idx);
+        let new = table.get_canonicalized_row_value(uf, idx);
         Some((*existing, old, new))
     } else {
         None
