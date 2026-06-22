@@ -74,10 +74,27 @@ impl Table {
         self.delta_start_row < self.row_count
     }
 
+    pub fn is_fn_table(&self) -> bool {
+        self.table_def.2.is_some()
+    }
+
     /// Look up a row index by its key columns. Returns None if not found.
     pub fn get_by_key(&self, key: &Row) -> Option<RowIndex> {
         self.key_index.get(key).copied()
     }
+
+    pub fn canonicalize_row(&self, uf: &UnionFind, row: &[Value]) -> Row {
+        debug_assert!(row.len() <= self.column_count());
+        let mut result_vec = SmallVec::new();
+        for idx in 0..row.len() {
+            let ty = &self.table_def.1[idx];
+            if ty.is_id_type() {
+                result_vec.push(uf.find(row[idx]));
+            }
+        }
+        Row(result_vec)
+    }
+
 
     /// Inserts a row. Returns `Some(row_index)` if a new row was added,
     /// `None` if an existing row was updated.
@@ -133,29 +150,11 @@ impl Table {
         };
         self.rows[start..]
             .chunks(self.column_count())
-            .map(|row| {
-                let row = row
-                    .iter()
-                    .zip(self.table_def.1.iter())
-                    .map(|(v, ty)| {
-                        if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
-                            uf.find(*v)
-                        } else {
-                            *v
-                        }
-                    })
-                    .collect();
-                Row(row)
-            })
+            .map(|row| self.canonicalize_row(uf, row))
             .filter(|row| {
-                constraints.iter().all(|c| match c.op {
-                    Op::Equ => row.0[c.column.0] == c.value,
-                    Op::Neq => row.0[c.column.0] != c.value,
-                    Op::Lt => row.0[c.column.0] < c.value,
-                    Op::Gt => row.0[c.column.0] > c.value,
-                    Op::Leq => row.0[c.column.0] <= c.value,
-                    Op::Geq => row.0[c.column.0] >= c.value,
-                })
+                constraints
+                    .iter()
+                    .all(|c| c.op.interp(&row.0[c.column.0], &c.value))
             })
             .map(|row| {
                 let row = find_columns.iter().map(|c| row.0[c.0]).collect();
@@ -163,10 +162,41 @@ impl Table {
             })
     }
 
+
+
     #[inline]
     pub fn get_all_row(&self, row_index: RowIndex) -> Row {
         let start = row_index.0 * self.column_count();
         let end = start + self.column_count();
         Row(self.rows[start..end].into())
     }
+
+    #[inline]
+    pub fn get_row_key(&self, row_index: RowIndex) -> Row {
+        let start = row_index.0 * self.column_count();
+        let end = start + self.arity();
+        Row(self.rows[start..end].into())
+    }
+
+    #[inline]
+    pub fn get_row_value(&self, row_index:RowIndex) -> Value {
+        let idx = row_index.0 * (self.column_count() + 1) -1;
+        self.rows[idx]
+    }
+
+    #[inline]
+    pub fn get_value_type(&self) -> &Type {
+        &self.table_def.1[self.column_count()]
+    }
+
+    #[inline]
+    pub fn get_canonicalized_row_value(&self, uf: &UnionFind, row_index: RowIndex) -> Value {
+        let v = self.get_row_value(row_index);
+        if (self.get_value_type().is_id_type()) {
+            uf.find(v)
+        } else {
+            v
+        }
+    }
+
 }

@@ -19,6 +19,19 @@ pub enum Op {
     Geq,
 }
 
+impl Op {
+    pub fn interp(&self, lhs: &Value, rhs: &Value) -> bool{
+        match self {
+            Op::Equ => lhs == rhs,
+            Op::Neq => lhs != rhs,
+            Op::Lt => lhs < rhs,
+            Op::Gt => lhs > rhs,
+            Op::Leq => lhs <= rhs, 
+            Op::Geq => lhs >= rhs,
+        }
+    }
+}
+
 impl Display for Op {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let display = match self {

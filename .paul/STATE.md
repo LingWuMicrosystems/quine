@@ -61,7 +61,7 @@ Resume file: .paul/ROADMAP.md
 | 19 | Created milestone v0.4 Extraction Ergonomics — single phase: Term::Let | Phase 10 | 2026-06-08 |
 
 ### Git State
-Last commit: 52592f0
+Last commit: 7d221f8
 Branch: main
 Git strategy: main
 Uncommitted: none

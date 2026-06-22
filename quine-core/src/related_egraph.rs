@@ -13,8 +13,7 @@ use crate::{
     cost::CostTracker,
     reverse_index::ReverseIndex,
     rule::{
-        Action, ActionTail, Constraint, CrossConstraint, FunctionCall, Op, Query, Rule,
-        ScanStep,
+        Action, ActionTail, Constraint, CrossConstraint, FunctionCall, Op, Query, Rule, ScanStep,
     },
     table::{ModifyState, Row, Table},
     types::{BaseType, MergeFn, TableDef, Type},
@@ -105,8 +104,12 @@ impl ActionCtx<'_> {
                     self.reverse_index.insert(canonical, table_id, idx);
 
                     // compute enode cost and update eclass minimum
-                    self.cost_tracker
-                        .compute_and_update_eclass_cost(&self.tables, self.union_find, table_id, idx);
+                    self.cost_tracker.compute_and_update_eclass_cost(
+                        &self.tables,
+                        self.union_find,
+                        table_id,
+                        idx,
+                    );
                 }
             }
             ModifyState::UnionRow(_) => {
@@ -177,7 +180,6 @@ impl ActionCtx<'_> {
         }
     }
 }
-
 
 impl RelatedEGraph {
     fn action_ctx(&mut self) -> ActionCtx<'_> {
@@ -417,14 +419,12 @@ impl RelatedEGraph {
         } else {
             let mut hash: Map<SmallVec<[Value; 4]>, Vec<&Row>> = Map::default();
             for right in &next_rows {
-                let key: SmallVec<[Value; 4]> =
-                    shared.iter().map(|(sp, _)| right.0[*sp]).collect();
+                let key: SmallVec<[Value; 4]> = shared.iter().map(|(sp, _)| right.0[*sp]).collect();
                 hash.entry(key).or_default().push(right);
             }
             let mut new_rows = Vec::with_capacity(rows.len());
             for left in &rows {
-                let key: SmallVec<[Value; 4]> =
-                    shared.iter().map(|(_, rp)| left.0[*rp]).collect();
+                let key: SmallVec<[Value; 4]> = shared.iter().map(|(_, rp)| left.0[*rp]).collect();
                 if let Some(matches) = hash.get(&key) {
                     for right in matches {
                         let mut r = left.clone();
@@ -458,13 +458,13 @@ impl RelatedEGraph {
         rows.into_iter()
             .filter(|row| {
                 constraints.iter().all(|cs| {
-                    let Some(&lhs) = row.0.get(var_to_pos[cs.lhs.0]) else {
+                    let Some(lhs) = row.0.get(var_to_pos[cs.lhs.0]) else {
                         return true;
                     };
-                    let Some(&rhs) = row.0.get(var_to_pos[cs.rhs.0]) else {
+                    let Some(rhs) = row.0.get(var_to_pos[cs.rhs.0]) else {
                         return true;
                     };
-                    check_cross(lhs, rhs, cs.op)
+                    cs.op.interp(lhs, rhs)
                 })
             })
             .map(|row| Row(var_to_pos.iter().map(|&p| row.0[p]).collect()))
@@ -493,9 +493,7 @@ impl RelatedEGraph {
                 // Preserve scanned_idx so we can remove merged rows from reverse_index.
                 let pairs: Vec<_> = indices
                     .iter()
-                    .filter_map(|&idx| {
-                        rebuild_row(table, idx, &self.union_find).map(|r| (idx, r))
-                    })
+                    .filter_map(|&idx| rebuild_row(table, idx, &self.union_find).map(|r| (idx, r)))
                     .collect();
 
                 if !pairs.is_empty() {
@@ -508,8 +506,11 @@ impl RelatedEGraph {
                                 let canonical = self.union_find.find(*new);
                                 self.reverse_index.remove(canonical, tid, *scanned_idx);
                                 // D1: Redirect cost_select from absorbed -> surviving enode
-                                self.cost_tracker
-                                    .cost_select_redirect(canonical, (tid, *scanned_idx), (tid, *_existing_idx));
+                                self.cost_tracker.cost_select_redirect(
+                                    canonical,
+                                    (tid, *scanned_idx),
+                                    (tid, *_existing_idx),
+                                );
                             }
                         }
                     }
@@ -533,20 +534,15 @@ impl RelatedEGraph {
                                 let arity = self.tables[tid].arity();
                                 let value_ref =
                                     &mut self.tables[tid].rows[existing_idx.0 * column + arity];
-                                let resolved = match merge_fn {
-                                    MergeFn::Min => min(new, old),
-                                    MergeFn::Max => max(new, old),
-                                };
-                                *value_ref = *resolved;
+                                let resolved = merge_fn.interp(new, old);
+                                *value_ref = resolved;
                             }
                             Vec::new()
                         }
                         None => pairs
                             .into_iter()
                             .flat_map(|(_scanned_idx, (_existing_idx, old, new))| {
-                                if let Some((parent, child)) =
-                                    self.union_find.union(old, new)
-                                {
+                                if let Some((parent, child)) = self.union_find.union(old, new) {
                                     self.reverse_index.merge(parent, child);
                                     // D2: Merge eclass costs eagerly
                                     self.cost_tracker.merge_eclass_cost(parent, child);
@@ -634,41 +630,13 @@ impl RelatedEGraph {
 }
 
 fn rebuild_row(table: &Table, idx: RowIndex, uf: &UnionFind) -> Option<(RowIndex, Value, Value)> {
-    let row = table.get_all_row(idx);
-    let canonical: Vec<Value> = row
-        .0
-        .iter()
-        .enumerate()
-        .map(|(i, v)| {
-            let ty = &table.table_def.1[i];
-            if matches!(ty, Type::Name(_) | Type::Base(BaseType::Id)) {
-                uf.find(*v)
-            } else {
-                *v
-            }
-        })
-        .collect();
-
-    let arity = table.arity();
-    let key = Row(canonical[..arity].to_smallvec());
+    let key = table.get_row_key(idx);
     let existing = table.key_index.get(&key)?;
-    if *existing == idx {
-        return None;
-    }
-    let old = table.get_all_row(*existing).0[arity];
-    let new = canonical[arity];
-    Some((*existing, old, new))
-}
-
-#[inline]
-fn check_cross(lhs: Value, rhs: Value, op: Op) -> bool {
-    match op {
-        Op::Equ => lhs.0 == rhs.0,
-        Op::Neq => lhs.0 != rhs.0,
-        Op::Lt => lhs.0 < rhs.0,
-        Op::Gt => lhs.0 > rhs.0,
-        Op::Leq => lhs.0 <= rhs.0,
-        Op::Geq => lhs.0 >= rhs.0,
+    if *existing != idx {
+        let old = table.get_row_value(*existing);
+        let new = table.get_canonicalized_row_value(uf,idx);
+        Some((*existing, old, new))
+    } else {
+        None
     }
 }
-

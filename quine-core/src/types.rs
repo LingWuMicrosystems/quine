@@ -1,4 +1,5 @@
 use core::fmt::Display;
+use crate::common::Value;
 
 use alloc::{boxed::Box, string::String};
 
@@ -17,6 +18,17 @@ pub struct TypeConstructor(pub String, pub Box<[Type]>);
 pub enum MergeFn {
     Min,
     Max,
+}
+
+impl MergeFn {
+    pub fn interp(&self, lhs: &Value, rhs: &Value) -> Value{
+        let (a,b) = (lhs.0, rhs.0);
+        let v = match self {
+            MergeFn::Min => std::cmp::min(a, b),
+            MergeFn::Max => std::cmp::max(a, b),
+        };
+        Value(v)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -41,6 +53,10 @@ impl Type {
             Type::Base(base) => base.clone(),
             Type::Name(_) => BaseType::Id,
         }
+    }
+
+    pub fn is_id_type(&self) -> bool {
+        matches!(self, Type::Base(BaseType::Id) | Type::Name(_))
     }
 }
 
