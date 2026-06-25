@@ -49,6 +49,8 @@ Rust workspace with three crates:
 | 16 | Term::Let uses Vec<(String, Term)> + Box<Term> — flat binding list, no nesting | User feedback: nested lets are unreadable; &mut Vec threading accumulates all shared bindings into single Let | 10 |
 | 17 | Display format for Let: `(let ([name val] ...) body)` — square bracket pairs | User preference; distinct from standard S-expression `((name val) ...)` parens for visual clarity | 10 |
 | 18 | Two-pass extraction: count_eclass_refs (DFS) → build_term_with_lets (build with Var) | Ensures shared eclasses detected before building; matches materialize_cheapest path (cost_select → find_defining_row) | 10 |
+| 19 | Move Atom + Term to quine-core; break circular dep (quine-solver → quine-frontend) | Atom/Term are core data types used by solver, frontend, CLI; enables quine-frontend → quine-solver cleanly | 12 |
+| 20 | ILP extraction in EngineContext.apply() (reverses Decision 14) | Original constraint (circular dep) eliminated by Term/Atom move; apply() now directly orchestrates both greedy and optimal extraction | 12 |
 
 ## DSL Syntax
 
@@ -82,6 +84,7 @@ rule edge(x, y) { set path(x, y) }
 | 10 — Term::Let Extraction | ✅ Complete | 2026-06-08 |
 
 | 11 | Core Engine Simplification | ✅ Complete | 2026-06-13 |
+| 12 | ILP Integration | ✅ Complete | 2026-06-25 |
 
 ---
-*Last updated: 2026-06-14 after Phase 11*
+*Last updated: 2026-06-25 after Phase 12 (v0.5 complete)*

@@ -211,15 +211,11 @@ run saturate
     .unwrap();
     ctx.apply(unit);
 
-    let (_, mode) = ctx
-        .last_extract_info
-        .take()
-        .expect("last_extract_info should be set for Extract command");
     assert!(
-        matches!(mode, ExtractMode::Optimal),
-        "expected ExtractMode::Optimal, got {:?}",
-        mode
+        ctx.last_extract.is_some(),
+        "last_extract should be set for optimal extraction"
     );
+    // last_extract_warning may be Some(warning) or None — either is valid
 }
 
 // ============================================================================
@@ -258,13 +254,12 @@ run saturate
     .unwrap();
     ctx.apply(unit);
 
-    let (_, mode) = ctx
-        .last_extract_info
-        .take()
-        .expect("last_extract_info should be set for Extract command");
     assert!(
-        matches!(mode, ExtractMode::Greedy),
-        "expected ExtractMode::Greedy, got {:?}",
-        mode
+        ctx.last_extract.is_some(),
+        "last_extract should be set for greedy extraction"
+    );
+    assert!(
+        ctx.last_extract_warning.is_none(),
+        "greedy extraction should not produce a warning"
     );
 }

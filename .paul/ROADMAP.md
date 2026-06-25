@@ -97,29 +97,23 @@ Plans: 1/1 complete — [10-01](.paul/phases/10-term-let/10-01-SUMMARY.md) added
 
 ## Milestone: v0.5 — Refactor & Simplify 🚧
 
-Status: 🚧 In Progress
-Phases: 2 of 3 complete
+Status: ✅ Complete
+Phases: 3 of 3 complete
 
 | # | Phase | Plans | Status | Completed |
 |---|-------|-------|--------|-----------|
 | 11 | Core Engine Simplification | [11-01](.paul/phases/11-core-simplification/11-01-PLAN.md), [11-02](.paul/phases/11-core-simplification/11-02-PLAN.md), [11-03](.paul/phases/11-core-simplification/11-03-PLAN.md), [11-04](.paul/phases/11-core-simplification/11-04-PLAN.md) | ✅ Complete | 2026-06-13 |
-| 12 | Solver Simplification | TBD | Not started | - |
-| 13 | Frontend & CLI Consolidation | TBD | Not started | - |
+| 12 | ILP Integration | [12-01](.paul/phases/12-ilp-integration/12-01-SUMMARY.md) | ✅ Complete | 2026-06-25 |
 
 ### Phase 11: Core Engine Simplification ✅
 
 Focus: Split `related_egraph.rs` (892 lines), tighten APIs, and remove dead paths
 Plans: 4/4 complete — [11-01](.paul/phases/11-core-simplification/11-01-SUMMARY.md) (CostTracker → cost.rs, −160 lines), [11-02](.paul/phases/11-core-simplification/11-02-SUMMARY.md) (ReverseIndex → reverse_index.rs, −32 lines), [11-03](.paul/phases/11-core-simplification/11-03-SUMMARY.md) (insert/union/fresh_id delegation, −48 lines), [11-04](.paul/phases/11-core-simplification/11-04-SUMMARY.md) (run_query pipeline: scan_step_table + join_step_rows + filter_and_permute, 140→50 lines). Total: 892 → 674 (−218, −24%)
 
-### Phase 12: Solver Simplification
+### Phase 12: ILP Integration ✅
 
-Focus: Simplify `relaxation.rs` (637 lines) + `solver.rs` (460 lines); extract shared infrastructure, streamline the B&B loop
-Plans: TBD (defined during /paul:plan)
-
-### Phase 13: Frontend & CLI Consolidation
-
-Focus: Deduplicate across `lib.rs`, `syntax.rs`, `compile/`, and `pest_parser.rs`; unify patterns
-Plans: TBD (defined during /paul:plan)
+Focus: Move ILP optimal extraction from `quine-cli` into `EngineContext.apply()`; break circular dependency (`quine-solver → quine-frontend` for Term/Atom) by moving `Term` and `Atom` to `quine-core`
+Plans: 1/1 complete — [12-01](.paul/phases/12-ilp-integration/12-01-SUMMARY.md) moved Atom+Term → quine-core, wired ilp_extract into apply(), deduplicated CLI, removed quine-solver from CLI deps
 
 ---
-*Last updated: 2026-06-13 — v0.5 milestone created*
+*Last updated: 2026-06-25 — v0.5 milestone complete*

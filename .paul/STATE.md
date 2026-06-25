@@ -1,38 +1,37 @@
 ---
 status: in_progress
 current_milestone: v0.5
-current_phase: 11-core-simplification
-last_updated: 2026-06-13
+current_phase: 12-ilp-integration
+last_updated: 2026-06-24
 ---
 
 ## Current Position
 
-Milestone: v0.5 Refactor & Simplify — 🚧 In Progress
-Phase: 12 of 3 (Solver Simplification)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-06-14 — Phase 11 complete (4/4 plans), transitioned to Phase 12
+Milestone: v0.5 Refactor & Simplify — ✅ Complete
+Phase: 12 of 2 (ILP Integration) — ✅ Complete
+Plan: 12-01 unified
+Status: Loop closed — milestone complete
+Last activity: 2026-06-25 — Unified 12-01 (ILP extraction moved into EngineContext.apply())
 
 Progress:
-- v0.5 Refactor & Simplify: [████████░░] 67%
+- v0.5 Refactor & Simplify: [██████████] 100%
 - Phase 11: [██████████] 100% (Core Engine Simplification — 4/4 plans)
-- Phase 12: [░░░░░░░░░░] 0% (Solver Simplification)
-- Phase 13: [░░░░░░░░░░] 0% (Frontend & CLI Consolidation)
+- Phase 12: [██████████] 100% (ILP Integration — 1 plan executed)
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ○        ○        ○     [Ready for Phase 12 planning]
+  ✓        ✓        ✓     [Loop complete — v0.5 milestone complete]
 ```
 
 ## Session Continuity
 
-Last session: 2026-06-14
-Stopped at: Phase 11 complete, ready to plan Phase 12
-Next action: /paul:plan for Phase 12 (Solver Simplification)
-Resume file: .paul/ROADMAP.md
+Last session: 2026-06-25
+Stopped at: UNIFY complete for Plan 12-01 — v0.5 milestone complete
+Next action: /paul:milestone to create v0.6, or /paul:plan for next phase
+Resume file: .paul/phases/12-ilp-integration/12-01-SUMMARY.md
 
 ## Accumulated Context
 
@@ -59,6 +58,7 @@ Resume file: .paul/ROADMAP.md
 | 17 | find_cse_violations accepts &fixed param; skips edges with CSE decision to prevent infinite recursion | 07-03 | 2026-06-07 |
 | 18 | BDD Given/When/Then doc comments on all 26 test functions | 07-03 | 2026-06-07 |
 | 19 | Created milestone v0.4 Extraction Ergonomics — single phase: Term::Let | Phase 10 | 2026-06-08 |
+| 20 | Move ILP optimal extraction into EngineContext.apply(); break circular dep by moving Term+Atom to quine-core | 12-01 | 2026-06-24 |
 
 ### Git State
 Last commit: 7d221f8

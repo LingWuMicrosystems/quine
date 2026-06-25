@@ -4,8 +4,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use quine_core::common::{RowIndex, Value};
 use quine_core::related_egraph::{RelatedEGraph, TableId};
-use quine_frontend::syntax::Atom;
-use quine_frontend::term::Term;
+use quine_core::atom::Atom;
+use quine_core::term::Term;
 
 use crate::dag::ExtractionDAG;
 use crate::formulation::{atom_from_value, type_is_eclass};

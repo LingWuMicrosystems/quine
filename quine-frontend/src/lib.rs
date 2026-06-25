@@ -22,6 +22,8 @@ use quine_core::rule::{self, Query, VariableRecord};
 use quine_core::table::Row;
 use quine_core::types::*;
 
+use quine_solver::{ilp_extract, ILPConfig};
+
 use crate::env::{CompileEnv, TableEnv};
 use crate::interner::Interner;
 use crate::syntax::{Atom, AtomOrVariable, CostDef, Expr, ExtractMode, FunctionCall};
@@ -63,8 +65,8 @@ pub struct EngineContext {
     pub native_signatures: Map<String, NativeSignature>,
     /// Result of the last `extract <expr>` evaluation (set by apply).
     pub last_extract: Option<Term>,
-    /// Info for the last extract command — consumed by CLI for optimal (ILP) extraction.
-    pub last_extract_info: Option<(Expr, ExtractMode)>,
+    /// Warning message from the last optimal (ILP) extraction, if any.
+    pub last_extract_warning: Option<String>,
 }
 
 impl EngineContext {
@@ -90,10 +92,24 @@ impl EngineContext {
             }
             CompiledUnit::Extract(expr, ExtractMode::Greedy) => {
                 self.last_extract = Some(self.evaluate_and_extract(&expr));
-                self.last_extract_info = None;
+                self.last_extract_warning = None;
             }
             CompiledUnit::Extract(expr, ExtractMode::Optimal) => {
-                self.last_extract_info = Some((expr.clone(), ExtractMode::Optimal));
+                self.last_extract_warning = None;
+                match self.evaluate_expr(&expr) {
+                    Ok(root_eclass) => {
+                        let result =
+                            ilp_extract(&self.regraph, root_eclass, &ILPConfig::default());
+                        self.last_extract_warning = result.warning;
+                        self.last_extract = result.term;
+                    }
+                    Err(msg) => {
+                        self.last_extract =
+                            Some(Term::Literal(Atom::Str(alloc::format!(
+                                "<error: {msg}>"
+                            ))));
+                    }
+                }
             }
         }
     }

@@ -527,7 +527,6 @@ dependencies = [
  "pest_derive",
  "quine-core",
  "quine-frontend",
- "quine-solver",
  "reedline",
  "smallvec",
 ]
@@ -546,6 +545,7 @@ name = "quine-frontend"
 version = "0.1.0"
 dependencies = [
  "quine-core",
+ "quine-solver",
  "rustc-hash",
 ]
 
@@ -554,7 +554,6 @@ name = "quine-solver"
 version = "0.3.0"
 dependencies = [
  "quine-core",
- "quine-frontend",
  "smallvec",
 ]
 

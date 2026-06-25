@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, string::String};
 use quine_core::{common::ColumnIndex, types::Type};
 
-use crate::syntax::Atom;
+use quine_core::atom::Atom;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CompileError {

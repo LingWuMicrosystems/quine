@@ -302,16 +302,15 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
         }
         Rule::cost_def => Command::CostDef(parse_cost_def(inner)),
         Rule::extract_query => {
-            let mut inners = inner.into_inner();
-            let first = inners.next().unwrap();
-            // If the first inner is the "optimal" keyword, parse as optimal extract;
-            // otherwise it's the expr (greedy extract).
-            let (mode, expr_pair) = if first.as_str() == "optimal" {
-                (ExtractMode::Optimal, inners.next().unwrap())
+            // pest strips all literal strings ("extract", "optimal") from
+            // children, so inner pairs always = [expr].  Use the full matched
+            // text to decide the extract mode.
+            let mode = if inner.as_str().starts_with("extract optimal") {
+                ExtractMode::Optimal
             } else {
-                (ExtractMode::Greedy, first)
+                ExtractMode::Greedy
             };
-            let expr = parse_expr(expr_pair);
+            let expr = parse_expr(inner.into_inner().next().unwrap());
             Command::Extract(expr, mode)
         }
         _ => unreachable!("unexpected command variant: {:?}", inner.as_rule()),

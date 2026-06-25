@@ -130,10 +130,8 @@ impl Table {
             return ModifyState::UnionRow(*r);
         };
 
-        let min = value_ref.0.min(value.0);
-        let max = value_ref.0.max(value.0);
-        let value = if merge_fn == &MergeFn::Min { min } else { max };
-        *value_ref = Value(value);
+        *value_ref = merge_fn.interp(value_ref,&value);
+
         self.delta_start_row = self.delta_start_row.min(r.0);
         ModifyState::MergeRow(*r)
     }
@@ -184,6 +182,11 @@ impl Table {
     pub fn get_row_value(&self, row_index: RowIndex) -> Value {
         let idx = row_index.0 * self.column_count() + self.arity();
         self.rows[idx]
+    }
+
+    pub fn get_row_value_mut(&mut self, row_index: RowIndex) -> &mut Value {
+        let idx = row_index.0 * self.column_count() + self.arity();
+        &mut self.rows[idx]
     }
 
     #[inline]

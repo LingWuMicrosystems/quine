@@ -1,7 +1,7 @@
 use quine_core::common::Value;
 use quine_core::related_egraph::RelatedEGraph;
 use quine_core::types::{BaseType, Type};
-use quine_frontend::syntax::Atom;
+use quine_core::atom::Atom;
 
 /// Returns true if the type represents an eclass reference (not a literal).
 ///

@@ -5,6 +5,7 @@
 use quine_core::common::Value;
 use quine_core::related_egraph::RelatedEGraph;
 use quine_core::table::Row;
+use quine_core::term::Term;
 use quine_core::types::{TableDef, Type};
 use quine_solver::{ilp_extract, ILPConfig};
 
@@ -281,7 +282,7 @@ fn test_extracted_term_valid() {
 
     let term = result.term.unwrap();
     match &term {
-        quine_frontend::term::Term::App(name, children) => {
+        Term::App(name, children) => {
             assert_eq!(name, "Link");
             assert_eq!(children.len(), 1);
         }

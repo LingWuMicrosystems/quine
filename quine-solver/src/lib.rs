@@ -13,7 +13,7 @@ use alloc::string::String;
 use alloc::vec;
 use quine_core::common::Value;
 use quine_core::related_egraph::RelatedEGraph;
-use quine_frontend::term::Term;
+use quine_core::term::Term;
 
 use crate::dag::build_extraction_dag;
 use crate::relaxation::{solve_dag_shortest_path, Solution};
