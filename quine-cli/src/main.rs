@@ -10,7 +10,7 @@ use quine_frontend::syntax::Command;
 
 use quine_frontend::prelude::register_prelude;
 
-use quine_core::common::Set;
+use quine_core::common::{Map, Set};
 use quine_core::rule::VariableRecord;
 use quine_core::table::Row;
 
@@ -61,15 +61,73 @@ fn main() {
     register_prelude(&mut ctx);
 
     if args.len() == 1 {
+        // Pre-scan CWD for .quine modules so `import "name"` works in the REPL.
+        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        if let Err(e) = pre_scan_modules(&mut ctx, &cwd) {
+            eprintln!("warning: {e}");
+        }
         run_repl(&mut ctx);
     } else if args.len() == 2 {
-        if let Err(e) = run_file(&mut ctx, &args[1].clone().into()) {
+        let path: PathBuf = args[1].clone().into();
+        // Pre-scan the directory containing the loaded file.
+        let scan_dir = path
+            .canonicalize()
+            .unwrap_or_else(|_| path.clone())
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        if let Err(e) = pre_scan_modules(&mut ctx, &scan_dir) {
+            eprintln!("warning: {e}");
+        }
+        if let Err(e) = run_file(&mut ctx, &path) {
             eprintln!("error: {e}");
             std::process::exit(1);
         }
     } else {
         eprintln!("invalid params size")
     }
+}
+
+/// Recursively scan `root_dir` for `.quine` files and populate
+/// `ctx.module_map` with stem→canonical_path entries.  Duplicate stems
+/// (e.g. `src/foo.quine` and `lib/foo.quine`) are a hard error.
+fn pre_scan_modules(ctx: &mut EngineContext, root_dir: &Path) -> Result<(), String> {
+    let mut seen: Map<String, String> = Map::default();
+
+    fn walk(dir: &Path, seen: &mut Map<String, String>) -> Result<(), String> {
+        let entries = fs::read_dir(dir).map_err(|e| format!("read_dir {:?}: {e}", dir))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("dir entry error: {e}"))?;
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, seen)?;
+            } else if path.extension().map_or(false, |e| e == "quine") {
+                let stem = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                if stem.is_empty() {
+                    continue;
+                }
+                let canonical = path
+                    .canonicalize()
+                    .map_err(|e| format!("canonicalize {:?}: {e}", &path))?;
+                let path_str = canonical.to_string_lossy().to_string();
+                if let Some(existing) = seen.get(&stem) {
+                    return Err(format!(
+                        "duplicate module name \"{stem}\": {existing} and {path_str}"
+                    ));
+                }
+                seen.insert(stem, path_str);
+            }
+        }
+        Ok(())
+    }
+
+    walk(root_dir, &mut seen)?;
+    ctx.module_map = seen;
+    Ok(())
 }
 
 fn run_file(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
@@ -88,12 +146,34 @@ fn run_file(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
 /// Load a file via `import` statement. Deduplicates by canonical path:
 /// each file is only loaded once. Returns Ok without doing anything if
 /// the file was already loaded.
+///
+/// Resolution order:
+/// 1. Bare module name (no `.` or `/` in the name) → look up in the
+///    pre-scanned `module_map`.
+/// 2. Otherwise → resolve as a file path relative to `base_dir`.
 fn import_file(ctx: &mut EngineContext, import_path: &str, base_dir: &Path) -> Result<(), String> {
-    let resolved = if Path::new(import_path).is_absolute() {
+    // Check if this is a bare module name (no extension, no path separator).
+    let is_module_name = !import_path.contains('.') && !import_path.contains('/');
+    let canonical_str = if is_module_name {
+        if let Some(path) = ctx.module_map.get(import_path) {
+            path.clone()
+        } else {
+            // Module not found in pre-scan; fall through to path resolution
+            // so the error message mentions the file path, not the module.
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
+    let resolved = if !canonical_str.is_empty() {
+        PathBuf::from(&canonical_str)
+    } else if Path::new(import_path).is_absolute() {
         PathBuf::from(import_path)
     } else {
         base_dir.join(import_path)
     };
+
     let canonical = resolved
         .canonicalize()
         .map_err(|e| format!("cannot resolve import \"{import_path}\": {e}"))?;

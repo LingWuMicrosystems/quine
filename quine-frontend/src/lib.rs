@@ -70,6 +70,10 @@ pub struct EngineContext {
     /// Canonical paths of files that have already been loaded via `import`.
     /// Used to prevent duplicate imports and detect circular dependencies.
     pub loaded_files: Set<String>,
+    /// Module name → canonical path mapping populated by pre-scanning the
+    /// source directory.  `import "name"` (no extension, no path separator)
+    /// resolves via this map before falling back to file-path resolution.
+    pub module_map: Map<String, String>,
 }
 
 impl EngineContext {
