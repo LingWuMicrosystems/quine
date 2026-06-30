@@ -101,7 +101,7 @@ pub fn compile_command(
             native_signatures,
         )
         .map(CompiledUnit::Action),
-        Command::Import(_) => unreachable!("Import handled before compilation"),
+        Command::Load(_) => unreachable!("Load handled before compilation"),
         Command::Query(_, _) => unreachable!("Query compiled separately"),
         Command::CostDef(def) => {
             // Validate: type_name must be a defined data type
