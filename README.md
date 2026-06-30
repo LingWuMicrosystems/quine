@@ -5,16 +5,38 @@ Relation-graph match-rewrite engine — e-graph equality saturation with datalog
 ## Usage
 
 ```bash
-quine                    # Start REPL
-quine file.quine         # Execute a file
+quine                         # Start REPL
+quine file.quine              # Execute a file as main entry point
+quine dir/                    # Pre-scan directory, then REPL
+quine dir/ --main name        # Pre-scan directory, execute named module as main
 ```
 
-### REPL Meta-commands
+### Module loading (like rustc)
 
-| Command | Description |
-|---------|-------------|
-| `:exit`, `:quit`, `:q` | Exit REPL |
-| `:load "file.quine"` | Load and execute a file |
+`load` statements in `.quine` files bring in declarations from other files:
+
+```
+load "irtype"           # bare name → looks for irtype.quine in same directory
+load "./sub/extra.quine"  # path with / or . → resolved as-is
+```
+
+Resolution:
+1. Bare name → check pre-scanned `module_map` (only populated when `quine dir/` is used).
+2. Bare name not in map → look for `name.quine` relative to the loading file's directory (like `mod foo` → `foo.rs`).
+3. Path-like (contains `.` or `/`) → resolve directly as a file path.
+
+Loaded modules may only contain **pure declarations**: `data`, `relation`, `function`, `rule`, `cost`, and nested `load`. Side-effecting commands (`fact`, `run`, `query`, `extract`) are rejected in loaded modules — they belong in the main file only.
+
+Duplicate loads (by canonical path) are silently skipped; circular loads are handled correctly.
+
+### REPL
+
+| Input | Description |
+|-------|-------------|
+| `exit`, `quit` | Exit REPL |
+| `:load "file.quine"` | Load and execute a file (always reloads) |
+| `data`, `rule`, `fact`, … | Any valid command, executed immediately |
+| Multi-line input | Entered automatically when a statement is incomplete (unclosed `{`, `(`, etc.) |
 
 ## Syntax
 
@@ -40,8 +62,8 @@ function add(i32, i32) -> i32 merge min
 ### Facts
 
 ```
-fact set edge(1, 2)
-fact set edge(2, 3)
+fact set edge(1i32, 2i32)
+fact set edge(2i32, 3i32)
 ```
 
 ### Rules
@@ -122,10 +144,11 @@ Shared sub-expressions (eclasses referenced by multiple parent enodes) are autom
 ### Run
 
 ```
-run
+run saturate
+run repeat 10
 ```
 
-Triggers e-graph saturation: applies all rules until no new facts are produced.
+Triggers e-graph saturation: applies all rules until no new facts are produced (or for a fixed number of iterations).
 
 ### Base Types
 
