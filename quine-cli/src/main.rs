@@ -1,4 +1,5 @@
 use std::env;
+use std::error::Error;
 use std::path::Path;
 use std::{borrow::Cow, fs, path::PathBuf};
 
@@ -57,7 +58,7 @@ fn get_history_path() -> PathBuf {
 
 // ── CLI ────────────────────────────────────────────────────────────────
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     let mut ctx = EngineContext::default();
     register_prelude(&mut ctx);
@@ -65,9 +66,9 @@ fn main() {
     if args.len() == 1 {
         // No args → REPL (scan CWD for modules).
         let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let _ = pre_scan_modules(&mut ctx, &cwd);
-        run_repl(&mut ctx);
-        return;
+        pre_scan_modules(&mut ctx, &cwd)?;
+        run_repl(&mut ctx)?;
+        return Ok(());
     }
 
     // Parse optional --main <file> before the positional arg.
@@ -87,32 +88,26 @@ fn main() {
     if positional.is_empty() {
         // --main without a directory → scan CWD.
         let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        if let Err(e) = pre_scan_modules(&mut ctx, &cwd) {
-            eprintln!("error: {e}");
-            std::process::exit(1);
-        }
+        pre_scan_modules(&mut ctx, &cwd)?;
         if let Some(main) = &main_file {
-            execute_main_module(&mut ctx, &cwd, main);
+            execute_main_module(&mut ctx, &cwd, main)?;
         } else {
-            run_repl(&mut ctx);
+            run_repl(&mut ctx)?;
         }
-        return;
+        return Ok(());
     }
 
     let path: PathBuf = positional[0].into();
 
     if path.is_dir() {
         // Directory → pre-scan, then --main or REPL.
-        if let Err(e) = pre_scan_modules(&mut ctx, &path) {
-            eprintln!("error: {e}");
-            std::process::exit(1);
-        }
+        pre_scan_modules(&mut ctx, &path)?;
         if let Some(main) = &main_file {
-            execute_main_module(&mut ctx, &path, main);
+            execute_main_module(&mut ctx, &path, main)?;
         } else {
-            run_repl(&mut ctx);
+            run_repl(&mut ctx)?;
         }
-        return;
+        return Ok(());
     }
 
     // File argument → pre-scan its parent directory, execute as main.
@@ -122,30 +117,25 @@ fn main() {
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."));
 
-    if let Err(e) = pre_scan_modules(&mut ctx, &scan_dir) {
-        eprintln!("error: {e}");
-        std::process::exit(1);
-    }
+    pre_scan_modules(&mut ctx, &scan_dir)?;
 
-    let stem = canonical
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let stem = canonical.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     if let Some(module) = ctx.module_map.get(stem).cloned() {
         ctx.loaded_files.insert(module.canonical_path.clone());
         let base = PathBuf::from(&module.base_dir);
-        if let Err(e) = execute_file_commands(&mut ctx, module.commands, &base) {
-            eprintln!("error: {e}");
-            std::process::exit(1);
-        }
+        execute_file_commands(&mut ctx, module.commands, &base)?;
+        Ok(())
     } else {
-        eprintln!("error: module \"{stem}\" not found in pre-scan");
-        std::process::exit(1);
+        return Err(format!("module \"{stem}\" not found in pre-scan").into());
     }
 }
 
 /// Execute a named module from the pre-scanned map relative to `dir`.
-fn execute_main_module(ctx: &mut EngineContext, dir: &Path, name: &str) {
+fn execute_main_module(
+    ctx: &mut EngineContext,
+    dir: &Path,
+    name: &str,
+) -> Result<(), Box<dyn Error>> {
     // Resolve: try bare name first, then dir/name.quine.
     let module = ctx.module_map.get(name).cloned().or_else(|| {
         let path = dir.join(format!("{name}.quine"));
@@ -157,15 +147,10 @@ fn execute_main_module(ctx: &mut EngineContext, dir: &Path, name: &str) {
         Some(m) => {
             ctx.loaded_files.insert(m.canonical_path.clone());
             let base = PathBuf::from(&m.base_dir);
-            if let Err(e) = execute_file_commands(ctx, m.commands, &base) {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }
+            execute_file_commands(ctx, m.commands, &base)?;
+            Ok(())
         }
-        None => {
-            eprintln!("error: module \"{name}\" not found in pre-scan");
-            std::process::exit(1);
-        }
+        None => Err(format!("module \"{name}\" not found in pre-scan").into()),
     }
 }
 
@@ -205,11 +190,10 @@ fn pre_scan_modules(ctx: &mut EngineContext, root_dir: &Path) -> Result<(), Stri
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_default();
 
-                let content = fs::read_to_string(&canonical)
-                    .map_err(|e| format!("read {:?}: {e}", &path))?;
-                let commands = parse_file(&content).map_err(|e| {
-                    format!("parse error in {}: {e}", canonical_str)
-                })?;
+                let content =
+                    fs::read_to_string(&canonical).map_err(|e| format!("read {:?}: {e}", &path))?;
+                let commands = parse_file(&content)
+                    .map_err(|e| format!("parse error in {}: {e}", canonical_str))?;
 
                 if let Some(existing) = seen.get(&stem) {
                     return Err(format!(
@@ -581,10 +565,10 @@ impl Validator for QuineValidator {
     }
 }
 
-fn run_repl(ctx: &mut EngineContext) {
+fn run_repl(ctx: &mut EngineContext) -> Result<(), Box<dyn Error>> {
     let validator = Box::new(QuineValidator);
     let history_file = get_history_path();
-    let history = Box::new(FileBackedHistory::with_file(1000, history_file).unwrap());
+    let history = Box::new(FileBackedHistory::with_file(1000, history_file)?);
     let mut line_editor = Reedline::create()
         .with_validator(validator)
         .with_history(history);
@@ -593,10 +577,7 @@ fn run_repl(ctx: &mut EngineContext) {
     println!("Quine 0.1.0");
 
     loop {
-        let sig = match line_editor.read_line(&prompt) {
-            Ok(s) => s,
-            Err(_) => break,
-        };
+        let sig = line_editor.read_line(&prompt)?;
         match sig {
             Signal::Success(buffer) => {
                 let input = buffer.trim_start();
@@ -605,14 +586,12 @@ fn run_repl(ctx: &mut EngineContext) {
                 }
 
                 if input == "exit" || input == "quit" {
-                    break;
+                    return Ok(());
                 }
 
-                if let Err(e) = execute_repl_source(ctx, input) {
-                    eprintln!("error: {e}");
-                }
+                execute_repl_source(ctx, input)?;
             }
-            Signal::CtrlC | Signal::CtrlD => break,
+            Signal::CtrlC | Signal::CtrlD => return Ok(()),
             _ => {}
         }
     }
