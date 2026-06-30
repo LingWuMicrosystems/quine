@@ -64,9 +64,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     register_prelude(&mut ctx);
 
     if args.len() == 1 {
-        // No args → REPL (scan CWD for modules).
-        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        pre_scan_modules(&mut ctx, &cwd)?;
         run_repl(&mut ctx)?;
         return Ok(());
     }
@@ -85,19 +82,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    if positional.is_empty() {
-        // --main without a directory → scan CWD.
-        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        pre_scan_modules(&mut ctx, &cwd)?;
-        if let Some(main) = &main_file {
-            execute_main_module(&mut ctx, &cwd, main)?;
-        } else {
-            run_repl(&mut ctx)?;
-        }
-        return Ok(());
-    }
-
-    let path: PathBuf = positional[0].into();
+    let path: PathBuf = if positional.is_empty() {
+        PathBuf::from(".")
+    } else {
+        positional[0].into()
+    };
 
     if path.is_dir() {
         // Directory → pre-scan, then --main or REPL.
@@ -107,59 +96,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         } else {
             run_repl(&mut ctx)?;
         }
-        return Ok(());
-    }
-
-    // File argument → pre-scan its parent directory, execute as main.
-    let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
-    let scan_dir = canonical
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."));
-
-    pre_scan_modules(&mut ctx, &scan_dir)?;
-
-    let stem = canonical.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    if let Some(module) = ctx.module_map.get(stem).cloned() {
-        ctx.loaded_files.insert(module.canonical_path.clone());
-        let base = PathBuf::from(&module.base_dir);
-        execute_file_commands(&mut ctx, module.commands, &base)?;
-        Ok(())
     } else {
-        return Err(format!("module \"{stem}\" not found in pre-scan").into());
+        // File → execute directly (no automatic pre-scan of parent dir).
+        // `load "name"` inside the file resolves via file-path lookup
+        // (like rustc `mod foo` → `foo.rs`).
+        run_file(&mut ctx, &path)?;
     }
-}
-
-/// Execute a named module from the pre-scanned map relative to `dir`.
-fn execute_main_module(
-    ctx: &mut EngineContext,
-    dir: &Path,
-    name: &str,
-) -> Result<(), Box<dyn Error>> {
-    // Resolve: try bare name first, then dir/name.quine.
-    let module = ctx.module_map.get(name).cloned().or_else(|| {
-        let path = dir.join(format!("{name}.quine"));
-        let canonical = path.canonicalize().ok()?;
-        let stem = canonical.file_stem()?.to_str()?;
-        ctx.module_map.get(stem).cloned()
-    });
-    match module {
-        Some(m) => {
-            ctx.loaded_files.insert(m.canonical_path.clone());
-            let base = PathBuf::from(&m.base_dir);
-            execute_file_commands(ctx, m.commands, &base)?;
-            Ok(())
-        }
-        None => Err(format!("module \"{name}\" not found in pre-scan").into()),
-    }
+    Ok(())
 }
 
 // ── Pre-scan ───────────────────────────────────────────────────────────
 
 /// Recursively scan `root_dir` for `.quine` files, read and parse each one,
-/// and populate `ctx.module_map` with stem→ParsedModule entries.  Duplicate
-/// stems are a hard error.  All parse errors are caught here, before any
-/// execution begins.
+/// and populate `ctx.module_map`.  Duplicate stems are a hard error.
+/// Only called when the user explicitly passes a directory on the CLI.
 fn pre_scan_modules(ctx: &mut EngineContext, root_dir: &Path) -> Result<(), String> {
     use quine_frontend::ParsedModule;
 
@@ -190,8 +140,8 @@ fn pre_scan_modules(ctx: &mut EngineContext, root_dir: &Path) -> Result<(), Stri
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_default();
 
-                let content =
-                    fs::read_to_string(&canonical).map_err(|e| format!("read {:?}: {e}", &path))?;
+                let content = fs::read_to_string(&canonical)
+                    .map_err(|e| format!("read {:?}: {e}", &path))?;
                 let commands = parse_file(&content)
                     .map_err(|e| format!("parse error in {}: {e}", canonical_str))?;
 
@@ -217,6 +167,29 @@ fn pre_scan_modules(ctx: &mut EngineContext, root_dir: &Path) -> Result<(), Stri
     walk(root_dir, &mut seen)?;
     ctx.module_map = seen;
     Ok(())
+}
+
+/// Execute a named module from the pre-scanned map relative to `dir`.
+fn execute_main_module(
+    ctx: &mut EngineContext,
+    dir: &Path,
+    name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let module = ctx.module_map.get(name).cloned().or_else(|| {
+        let path = dir.join(format!("{name}.quine"));
+        let canonical = path.canonicalize().ok()?;
+        let stem = canonical.file_stem()?.to_str()?;
+        ctx.module_map.get(stem).cloned()
+    });
+    match module {
+        Some(m) => {
+            ctx.loaded_files.insert(m.canonical_path.clone());
+            let base = PathBuf::from(&m.base_dir);
+            execute_file_commands(ctx, m.commands, &base)?;
+            Ok(())
+        }
+        None => Err(format!("module \"{name}\" not found in pre-scan").into()),
+    }
 }
 
 // ── File loading ───────────────────────────────────────────────────────
@@ -275,13 +248,15 @@ fn check_load_allowed(cmds: &[Command], module_name: &str) -> Result<(), String>
 
 /// Process a `load "name"` or `load "path.quine"` command.
 ///
-/// Resolution order:
-/// 1. Bare module name (no `.` or `/`) → pre-scanned `module_map` lookup.
-/// 2. Otherwise → file-path resolution relative to `base_dir`.
+/// Resolution order (like rustc: `mod foo` → `foo.rs`):
+/// 1. Bare name (no `.` or `/`) → check pre-scanned `module_map` first.
+/// 2. Bare name not found → look for `name.quine` relative to `base_dir`.
+/// 3. Path-like (contains `.` or `/`) → resolve directly as a file path.
 fn process_load(ctx: &mut EngineContext, path: &str, base_dir: &Path) -> Result<(), String> {
     let is_module_name = !path.contains('.') && !path.contains('/');
 
     if is_module_name {
+        // Try pre-scanned module map first (if user ran `quine dir/`).
         let module = ctx.module_map.get(path).cloned();
         if let Some(module) = module {
             check_load_allowed(&module.commands, path)?;
@@ -292,12 +267,14 @@ fn process_load(ctx: &mut EngineContext, path: &str, base_dir: &Path) -> Result<
             let base = PathBuf::from(&module.base_dir);
             return execute_file_commands(ctx, module.commands, &base);
         }
-        // Module not found — fall through to path resolution.
     }
 
-    // Path-based load: file I/O at load time.
+    // File-path resolution.  For bare names append `.quine` (like rustc
+    // `mod foo` → `foo.rs`).  For path-like strings use as-is.
     let resolved = if Path::new(path).is_absolute() {
         PathBuf::from(path)
+    } else if is_module_name {
+        base_dir.join(format!("{path}.quine"))
     } else {
         base_dir.join(path)
     };

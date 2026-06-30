@@ -67,27 +67,25 @@ pub struct EngineContext {
     pub last_extract: Option<Term>,
     /// Warning message from the last optimal (ILP) extraction, if any.
     pub last_extract_warning: Option<String>,
-    /// Canonical paths of files that have already been loaded via `import`.
-    /// Used to prevent duplicate imports and detect circular dependencies.
+    /// Canonical paths of files that have already been loaded via `load`.
+    /// Used to prevent duplicate loads and detect circular dependencies.
     pub loaded_files: Set<String>,
-    /// Module name → pre-parsed module.  Populated by pre-scanning the
-    /// source directory before any execution begins.  `import "name"` (no
-    /// extension, no path separator) resolves via this map — no file I/O
-    /// at import time.
+    /// Module name → pre-parsed module.  Populated by pre-scanning a
+    /// directory (explicitly, via `quine dir/`).  `load "name"` resolves
+    /// via this map first, then falls back to file-path lookup.
     pub module_map: Map<String, ParsedModule>,
 }
 
 /// A module that has been discovered, read, and parsed during the pre-scan
-/// phase, ready for execution when imported.
+/// phase, ready for execution when loaded.
 #[derive(Debug, Default, Clone)]
 pub struct ParsedModule {
     /// Parsed commands from the file.
     pub commands: Vec<Command>,
-    /// Canonical path to the file, used for `loaded_files` dedup so that
-    /// `import "foo"` and `import "./foo.quine"` are treated as the same file.
+    /// Canonical path, used for `loaded_files` dedup.
     pub canonical_path: String,
-    /// Directory containing this module, used as `base_dir` when executing
-    /// its commands (for resolving any path-based imports it contains).
+    /// Directory containing this module, used as `base_dir` for any `load`
+    /// statements it contains.
     pub base_dir: String,
 }
 
