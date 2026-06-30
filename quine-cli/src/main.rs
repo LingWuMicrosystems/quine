@@ -62,7 +62,10 @@ fn main() {
     if args.len() == 1 {
         run_repl(&mut ctx);
     } else if args.len() == 2 {
-        run_file(&mut ctx, &args[1].clone().into()).unwrap();
+        if let Err(e) = run_file(&mut ctx, &args[1].clone().into()) {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
     } else {
         eprintln!("invalid params size")
     }
@@ -85,7 +88,47 @@ fn execute_repl_source(ctx: &mut EngineContext, source: &str) -> Result<(), Stri
 }
 
 fn execute_file_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<(), String> {
+    // Pre-register type names so forward references within the same file
+    // are visible to check_type_defined during compilation.
+    ctx.data_types.pending_names = cmds
+        .iter()
+        .filter_map(|cmd| {
+            if let Command::TypeDef(name, _) = cmd {
+                Some(name.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Phase 1: compile all TypeDefs first, collecting ALL type errors rather
+    // than stopping at the first one. This lets the user see every undefined
+    // type in one run.
+    let mut type_errors: Vec<String> = Vec::new();
+    let mut remaining: Vec<Command> = Vec::new();
     for cmd in cmds {
+        if matches!(&cmd, Command::TypeDef(..)) {
+            match compile_command(
+                &cmd,
+                &mut ctx.data_types,
+                &mut ctx.table_types,
+                &mut ctx.interner,
+                &ctx.native_names,
+                &ctx.native_signatures,
+            ) {
+                Ok(unit) => ctx.apply(unit),
+                Err(e) => type_errors.push(format!("{:?}", e)),
+            }
+        } else {
+            remaining.push(cmd);
+        }
+    }
+    if !type_errors.is_empty() {
+        return Err(type_errors.join("\n"));
+    }
+
+    // Phase 2: compile everything else (rules, facts, queries, etc.).
+    for cmd in remaining {
         execute_file_command(ctx, cmd)?;
     }
     Ok(())
@@ -132,7 +175,44 @@ fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), Str
 }
 
 fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<(), String> {
+    // Pre-register type names for forward reference support (same as file loading).
+    ctx.data_types.pending_names = cmds
+        .iter()
+        .filter_map(|cmd| {
+            if let Command::TypeDef(name, _) = cmd {
+                Some(name.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Phase 1: compile all TypeDefs first, collecting all type errors.
+    let mut type_errors: Vec<String> = Vec::new();
+    let mut remaining: Vec<Command> = Vec::new();
     for cmd in cmds {
+        if matches!(&cmd, Command::TypeDef(..)) {
+            match compile_command(
+                &cmd,
+                &mut ctx.data_types,
+                &mut ctx.table_types,
+                &mut ctx.interner,
+                &ctx.native_names,
+                &ctx.native_signatures,
+            ) {
+                Ok(unit) => ctx.apply(unit),
+                Err(e) => type_errors.push(format!("{:?}", e)),
+            }
+        } else {
+            remaining.push(cmd);
+        }
+    }
+    if !type_errors.is_empty() {
+        return Err(type_errors.join("\n"));
+    }
+
+    // Phase 2: compile everything else.
+    for cmd in remaining {
         match cmd {
             Command::Query(heads, vars) => {
                 let query =

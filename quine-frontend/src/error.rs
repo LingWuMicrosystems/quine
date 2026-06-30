@@ -8,6 +8,7 @@ pub enum CompileError {
     DuplicateTableName(String),
     DuplicateTypeName(String),
     UnknownTypeName(String),
+    UnknownTypeNames(Box<[String]>),
     InvalidTableName(String),
     InvalidTableColumn(String, ColumnIndex),
     InvalidVariableName(String),

@@ -1,7 +1,7 @@
 use alloc::format;
 use alloc::{string::String, vec::Vec};
 use quine_core::{
-    common::Map,
+    common::{Map, Set},
     types::{TableDef, TypeDef},
 };
 
@@ -47,6 +47,11 @@ pub struct DataTypeEnv {
     // pub type2name_map: Map<TypeDef, usize>,
     // constructor name
     pub cons2type_map: Map<String, usize>,
+    /// Type names that will be defined later in the current file / REPL input.
+    /// Populated before compilation to allow forward references between `data`
+    /// declarations. `check_type_defined` consults this set in addition to
+    /// `name2type_map`.
+    pub pending_names: Set<String>,
 }
 
 impl DataTypeEnv {
