@@ -1,4 +1,5 @@
 use std::env;
+use std::path::Path;
 use std::{borrow::Cow, fs, path::PathBuf};
 
 use quine::pest_parser::{parse_file, parse_repl_commands};
@@ -74,7 +75,34 @@ fn main() {
 fn run_file(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
     let content = fs::read_to_string(path).map_err(|e| format!("{e}"))?;
     let cmds = parse_file(&content)?;
-    execute_file_commands(ctx, cmds)
+    // Resolve base directory for relative imports inside this file.
+    let base_dir = path
+        .canonicalize()
+        .unwrap_or_else(|_| path.clone())
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+    execute_file_commands(ctx, cmds, &base_dir)
+}
+
+/// Load a file via `import` statement. Deduplicates by canonical path:
+/// each file is only loaded once. Returns Ok without doing anything if
+/// the file was already loaded.
+fn import_file(ctx: &mut EngineContext, import_path: &str, base_dir: &Path) -> Result<(), String> {
+    let resolved = if Path::new(import_path).is_absolute() {
+        PathBuf::from(import_path)
+    } else {
+        base_dir.join(import_path)
+    };
+    let canonical = resolved
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve import \"{import_path}\": {e}"))?;
+    let canonical_str = canonical.to_string_lossy().to_string();
+    if ctx.loaded_files.contains(&canonical_str) {
+        return Ok(()); // already loaded
+    }
+    ctx.loaded_files.insert(canonical_str);
+    run_file(ctx, &canonical)
 }
 
 fn execute_repl_source(ctx: &mut EngineContext, source: &str) -> Result<(), String> {
@@ -87,10 +115,31 @@ fn execute_repl_source(ctx: &mut EngineContext, source: &str) -> Result<(), Stri
     execute_repl_commands(ctx, cmds)
 }
 
-fn execute_file_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<(), String> {
+fn execute_file_commands(
+    ctx: &mut EngineContext,
+    cmds: Vec<Command>,
+    base_dir: &Path,
+) -> Result<(), String> {
+    // Phase 0: process imports (before type registration, so imported types
+    // are available for forward references and validation).
+    let mut import_errors: Vec<String> = Vec::new();
+    let mut after_imports: Vec<Command> = Vec::new();
+    for cmd in cmds {
+        if let Command::Import(path) = &cmd {
+            if let Err(e) = import_file(ctx, path, base_dir) {
+                import_errors.push(e);
+            }
+        } else {
+            after_imports.push(cmd);
+        }
+    }
+    if !import_errors.is_empty() {
+        return Err(import_errors.join("\n"));
+    }
+
     // Pre-register type names so forward references within the same file
     // are visible to check_type_defined during compilation.
-    ctx.data_types.pending_names = cmds
+    ctx.data_types.pending_names = after_imports
         .iter()
         .filter_map(|cmd| {
             if let Command::TypeDef(name, _) = cmd {
@@ -106,7 +155,7 @@ fn execute_file_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<
     // type in one run.
     let mut type_errors: Vec<String> = Vec::new();
     let mut remaining: Vec<Command> = Vec::new();
-    for cmd in cmds {
+    for cmd in after_imports {
         if matches!(&cmd, Command::TypeDef(..)) {
             match compile_command(
                 &cmd,
@@ -135,6 +184,9 @@ fn execute_file_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<
 }
 
 fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), String> {
+    if let Command::Import(_) = &cmd {
+        return Ok(()); // already processed in Phase 0
+    }
     if let Command::Query(heads, vars) = &cmd {
         let query = heads2query(heads, &ctx.table_types, &ctx.data_types, &mut ctx.interner)
             .map_err(|e| format!("{:?}", e))?;
@@ -175,8 +227,25 @@ fn execute_file_command(ctx: &mut EngineContext, cmd: Command) -> Result<(), Str
 }
 
 fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<(), String> {
+    // Phase 0: process imports (base_dir = cwd for REPL).
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut import_errors: Vec<String> = Vec::new();
+    let mut after_imports: Vec<Command> = Vec::new();
+    for cmd in cmds {
+        if let Command::Import(path) = &cmd {
+            if let Err(e) = import_file(ctx, path, &cwd) {
+                import_errors.push(e);
+            }
+        } else {
+            after_imports.push(cmd);
+        }
+    }
+    if !import_errors.is_empty() {
+        return Err(import_errors.join("\n"));
+    }
+
     // Pre-register type names for forward reference support (same as file loading).
-    ctx.data_types.pending_names = cmds
+    ctx.data_types.pending_names = after_imports
         .iter()
         .filter_map(|cmd| {
             if let Command::TypeDef(name, _) = cmd {
@@ -190,7 +259,7 @@ fn execute_repl_commands(ctx: &mut EngineContext, cmds: Vec<Command>) -> Result<
     // Phase 1: compile all TypeDefs first, collecting all type errors.
     let mut type_errors: Vec<String> = Vec::new();
     let mut remaining: Vec<Command> = Vec::new();
-    for cmd in cmds {
+    for cmd in after_imports {
         if matches!(&cmd, Command::TypeDef(..)) {
             match compile_command(
                 &cmd,

@@ -67,6 +67,9 @@ pub struct EngineContext {
     pub last_extract: Option<Term>,
     /// Warning message from the last optimal (ILP) extraction, if any.
     pub last_extract_warning: Option<String>,
+    /// Canonical paths of files that have already been loaded via `import`.
+    /// Used to prevent duplicate imports and detect circular dependencies.
+    pub loaded_files: Set<String>,
 }
 
 impl EngineContext {

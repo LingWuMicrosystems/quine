@@ -242,6 +242,15 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> Command {
     debug_assert!(matches!(pair.as_rule(), Rule::command));
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
+        Rule::import => {
+            // import = { "import" ~ string }
+            // The "import" keyword is stripped from inner pairs; the
+            // string pair gives the quoted path including quote chars.
+            let string_pair = inner.into_inner().next().unwrap();
+            let raw = string_pair.as_str();
+            let path = &raw[1..raw.len() - 1]; // strip surrounding quotes
+            Command::Import(path.into())
+        }
         Rule::type_def => {
             let mut parts = inner.into_inner();
             let name = parse_variable(parts.next().unwrap());

@@ -33,6 +33,7 @@ pub enum ExtractMode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Command {
+    Import(String),
     TypeDef(String, TypeDef),
     TableDef(String, TableDef),
     Rule(Rule),
@@ -287,6 +288,7 @@ impl Display for Head {
 impl Display for Command {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            Command::Import(path) => write!(f, "import \"{path}\""),
             Command::TypeDef(_, def) => write!(f, "{def}"),
             Command::TableDef(_, def) => write!(f, "{def}"),
             Command::Rule(Rule { heads, bodys, .. }) => {

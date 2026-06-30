@@ -1,13 +1,14 @@
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
-KEYWORD = _{ "rule" | "data" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "run" | "saturate" | "repeat" | "merge" | "min" | "max" | "extract" | "optimal" | "=" | op | "{" | "}" | ";" }
+KEYWORD = _{ "rule" | "data" | "import" | "relation" | "function" | "with" | "set" | "union" | "let" | "leteq" | "if" | "query" | "print" | "run" | "saturate" | "repeat" | "merge" | "min" | "max" | "extract" | "optimal" | "=" | op | "{" | "}" | ";" }
 
 TOP_LEVEL = {
     command*
 }
 
 command = {
-    type_def
+    import
+  | type_def
   | relation_def
   | function_def
   | fact
@@ -17,6 +18,8 @@ command = {
   | cost_def
   | extract_query
 }
+
+import = { "import" ~ string }
 
 run = { "run" ~ run_item }
 
