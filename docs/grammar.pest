@@ -158,9 +158,9 @@ base_type = {
   | "str"
 }
 
-variable           = @{ variable_head_char ~ variable_char* }
+variable           = @{ !KEYWORD ~ variable_head_char ~ variable_char* }
 variable_head_char = _{ (!ASCII_DIGIT ~ variable_char) }
-variable_char      = _{ (!(KEYWORD | WHITESPACE | "_" | "," | ";" | "(" | ")" | "[" | "]" | "{" | "}") ~ ANY) }
+variable_char      = _{ (!(WHITESPACE | "_" | "," | ";" | "(" | ")" | "[" | "]" | "{" | "}") ~ ANY) }
 
 atom = {
     boolean
