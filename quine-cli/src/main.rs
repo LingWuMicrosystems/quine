@@ -3,7 +3,7 @@ use std::error::Error;
 use std::path::Path;
 use std::{borrow::Cow, fs, path::PathBuf};
 
-use quine::pest_parser::{parse_file, parse_repl_commands};
+use quine::pest_parser::{is_repl_input_incomplete, parse_file, parse_repl_commands};
 use quine_frontend::EngineContext;
 use quine_frontend::compile::compile_command;
 use quine_frontend::compile::head2query::heads2query;
@@ -560,7 +560,8 @@ impl Validator for QuineValidator {
         }
         match parse_repl_commands(line) {
             Ok(_) => ValidationResult::Complete,
-            Err(_) => ValidationResult::Incomplete,
+            Err(_) if is_repl_input_incomplete(line) => ValidationResult::Incomplete,
+            Err(_) => ValidationResult::Complete,
         }
     }
 }

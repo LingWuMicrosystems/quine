@@ -376,6 +376,27 @@ pub fn parse_file(input: &str) -> Result<Vec<Command>, String> {
     Ok(commands)
 }
 
+/// Check whether a REPL input line is syntactically incomplete (needs more
+/// input to form a valid command).  Uses pest's error position: if the
+/// parser failed at the end of the input it was expecting more tokens;
+/// if it failed earlier there is a genuine syntax error.
+pub fn is_repl_input_incomplete(input: &str) -> bool {
+    use pest::error::InputLocation;
+
+    // The REPL parses individual commands, not TOP_LEVEL.
+    match QuineParser::parse(Rule::command, input) {
+        Ok(_) => false,
+        Err(e) => {
+            let end = match e.location {
+                InputLocation::Pos(p) => p,
+                InputLocation::Span((_, e)) => e,
+            };
+            // Error position at or past end → parser ran out of input.
+            end >= input.len()
+        }
+    }
+}
+
 pub fn parse_repl_commands(input: &str) -> Result<Vec<Command>, String> {
     let mut commands = Vec::new();
     let mut pos = 0;
