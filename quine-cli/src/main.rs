@@ -184,9 +184,49 @@ fn run_file(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
     execute_file_commands(ctx, cmds, &base_dir)
 }
 
+/// Validate that an imported module only contains pure declarations.
+/// `fact`, `run`, `query`, and `extract` are side-effecting or interactive
+/// commands that belong in the main file, not in a library module.
+fn check_import_allowed(cmds: &[Command], module_name: &str) -> Result<(), String> {
+    for cmd in cmds {
+        match cmd {
+            Command::Fact(_) => {
+                return Err(format!(
+                    "imported module \"{module_name}\" contains fact — \
+                     facts belong in the main file, not in an import"
+                ));
+            }
+            Command::Run(_) => {
+                return Err(format!(
+                    "imported module \"{module_name}\" contains run — \
+                     run belongs in the main file, not in an import"
+                ));
+            }
+            Command::Query(_, _) => {
+                return Err(format!(
+                    "imported module \"{module_name}\" contains query — \
+                     queries belong in the main file, not in an import"
+                ));
+            }
+            Command::Extract(_, _) => {
+                return Err(format!(
+                    "imported module \"{module_name}\" contains extract — \
+                     extract belongs in the main file, not in an import"
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// Load a file via `import` statement. Deduplicates by canonical path:
 /// each file is only loaded once. Returns Ok without doing anything if
 /// the file was already loaded.
+///
+/// Imported modules may only contain pure declarations (`data`, `relation`,
+/// `function`, `rule`, `cost`, `import`).  Side-effecting commands (`fact`,
+/// `run`, `query`, `extract`) are rejected.
 ///
 /// Resolution order:
 /// 1. Bare module name (no `.` or `/` in the name) → look up in the
@@ -201,6 +241,7 @@ fn import_file(ctx: &mut EngineContext, import_path: &str, base_dir: &Path) -> R
         // Clone the module out to avoid borrow-conflict with &mut ctx below.
         let module = ctx.module_map.get(import_path).cloned();
         if let Some(module) = module {
+            check_import_allowed(&module.commands, import_path)?;
             if ctx.loaded_files.contains(&module.canonical_path) {
                 return Ok(());
             }
@@ -225,8 +266,17 @@ fn import_file(ctx: &mut EngineContext, import_path: &str, base_dir: &Path) -> R
     if ctx.loaded_files.contains(&canonical_str) {
         return Ok(());
     }
-    ctx.loaded_files.insert(canonical_str);
-    run_file(ctx, &canonical)
+    ctx.loaded_files.insert(canonical_str.clone());
+    // Validate before executing.
+    let content = fs::read_to_string(&canonical)
+        .map_err(|e| format!("read {:?}: {e}", &canonical))?;
+    let cmds = parse_file(&content)?;
+    check_import_allowed(&cmds, import_path)?;
+    let base_dir = canonical
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+    execute_file_commands(ctx, cmds, &base_dir)
 }
 
 fn execute_repl_source(ctx: &mut EngineContext, source: &str) -> Result<(), String> {
