@@ -567,7 +567,9 @@ fn run_repl(ctx: &mut EngineContext) -> Result<(), Box<dyn Error>> {
                     return Ok(());
                 }
 
-                execute_repl_source(ctx, input)?;
+                if let Err(e) = execute_repl_source(ctx, input) {
+                    eprintln!("error: {e}");
+                }
             }
             Signal::CtrlC | Signal::CtrlD => return Ok(()),
             _ => {}
