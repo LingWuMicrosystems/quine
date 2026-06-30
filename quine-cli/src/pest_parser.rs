@@ -357,8 +357,8 @@ fn parse_run_body(pair: pest::iterators::Pair<Rule>) -> RunBody {
 }
 
 pub fn parse_file(input: &str) -> Result<Vec<Command>, String> {
-    // Trim leading whitespace so a blank first line doesn't cause pest
-    // to match zero commands and trigger a false error.
+    // Trim leading whitespace: pest's `command*` matches zero commands
+    // when the file starts with a blank line, triggering a false error.
     let trimmed = input.trim_start();
     let leading = input.len() - trimmed.len();
 
@@ -371,7 +371,7 @@ pub fn parse_file(input: &str) -> Result<Vec<Command>, String> {
     if !remaining.is_empty() {
         return Err(format!(
             "unexpected input at position {}: {remaining}",
-            leading + consumed,
+            leading + consumed
         ));
     }
 
