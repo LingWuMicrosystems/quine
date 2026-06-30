@@ -19,10 +19,6 @@ pub struct ReverseIndex {
 }
 
 impl ReverseIndex {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Track an enode reference for a canonical eclass value.
     ///
     /// Called after insert when a new row's value column is eclass-typed.

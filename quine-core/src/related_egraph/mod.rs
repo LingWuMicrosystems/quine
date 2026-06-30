@@ -14,9 +14,9 @@ use crate::{
     common::{ColumnIndex, Map, RowIndex, Set, Value, VarId},
     related_egraph::action::ActionCtx,
     rule::{
-        Action, ActionTail, Constraint, CrossConstraint, FunctionCall, Op, Query, Rule, ScanStep,
+        Action, Constraint, CrossConstraint, Op, Query, Rule, ScanStep,
     },
-    table::{ModifyState, Row, Table},
+    table::{ Row, Table},
     types::{BaseType, TableDef, Type},
     uf::UnionFind,
 };

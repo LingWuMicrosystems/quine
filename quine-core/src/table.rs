@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 use crate::{
     common::{ColumnIndex, Map, RowIndex, Value},
     rule::Constraint,
-    types::{MergeFn, TableDef, Type},
+    types::{TableDef, Type},
     uf::UnionFind,
 };
 

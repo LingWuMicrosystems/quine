@@ -49,9 +49,6 @@ impl Default for CostTracker {
 }
 
 impl CostTracker {
-    pub fn new() -> Self {
-        Self::default()
-    }
 
     /// Insert a cost model entry: "TypeName.ConsName" -> cost
     pub fn set_cost_model(&mut self, name: String, cost: u64) {
