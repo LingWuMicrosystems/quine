@@ -212,7 +212,7 @@ fn run_file(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
 
 // ── Load statement ─────────────────────────────────────────────────────
 
-/// Validate that a loaded module only contains pure declarations.
+/// Loaded modules may only contain pure declarations.
 fn check_load_allowed(cmds: &[Command], module_name: &str) -> Result<(), String> {
     for cmd in cmds {
         match cmd {

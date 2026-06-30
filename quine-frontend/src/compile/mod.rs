@@ -34,24 +34,6 @@ pub fn compile_command(
 ) -> Result<CompiledUnit, CompileError> {
     match cmd {
         Command::TypeDef(name, type_def) => {
-            // Validate all field types first, before any side effects.
-            // Collect all unknown type names across every constructor so the
-            // user sees every missing type in one error.
-            let mut unknowns: Vec<String> = Vec::new();
-            for cons in &type_def.1.0 {
-                for ty in cons.1.iter() {
-                    if let Err(CompileError::UnknownTypeName(n)) = check_type_defined(ty, data_types)
-                    {
-                        if !unknowns.contains(&n) {
-                            unknowns.push(n);
-                        }
-                    }
-                }
-            }
-            if !unknowns.is_empty() {
-                return Err(CompileError::UnknownTypeNames(unknowns.into()));
-            }
-
             let mut table_defs = vec![];
             for cons in &type_def.1.0 {
                 let table_name = format!("{}.{}", name, cons.0);
