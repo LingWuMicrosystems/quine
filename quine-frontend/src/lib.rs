@@ -26,7 +26,7 @@ use quine_solver::{ilp_extract, ILPConfig};
 
 use crate::env::{CompileEnv, TableEnv};
 use crate::interner::Interner;
-use crate::syntax::{Atom, AtomOrVariable, CostDef, Expr, ExtractMode, FunctionCall};
+use crate::syntax::{Atom, AtomOrVariable, Command, CostDef, Expr, ExtractMode, FunctionCall};
 use crate::term::Term;
 
 #[derive(Debug, Clone)]
@@ -70,10 +70,25 @@ pub struct EngineContext {
     /// Canonical paths of files that have already been loaded via `import`.
     /// Used to prevent duplicate imports and detect circular dependencies.
     pub loaded_files: Set<String>,
-    /// Module name → canonical path mapping populated by pre-scanning the
-    /// source directory.  `import "name"` (no extension, no path separator)
-    /// resolves via this map before falling back to file-path resolution.
-    pub module_map: Map<String, String>,
+    /// Module name → pre-parsed module.  Populated by pre-scanning the
+    /// source directory before any execution begins.  `import "name"` (no
+    /// extension, no path separator) resolves via this map — no file I/O
+    /// at import time.
+    pub module_map: Map<String, ParsedModule>,
+}
+
+/// A module that has been discovered, read, and parsed during the pre-scan
+/// phase, ready for execution when imported.
+#[derive(Debug, Default, Clone)]
+pub struct ParsedModule {
+    /// Parsed commands from the file.
+    pub commands: Vec<Command>,
+    /// Canonical path to the file, used for `loaded_files` dedup so that
+    /// `import "foo"` and `import "./foo.quine"` are treated as the same file.
+    pub canonical_path: String,
+    /// Directory containing this module, used as `base_dir` when executing
+    /// its commands (for resolving any path-based imports it contains).
+    pub base_dir: String,
 }
 
 impl EngineContext {

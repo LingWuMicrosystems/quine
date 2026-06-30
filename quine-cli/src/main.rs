@@ -69,18 +69,33 @@ fn main() {
         run_repl(&mut ctx);
     } else if args.len() == 2 {
         let path: PathBuf = args[1].clone().into();
-        // Pre-scan the directory containing the loaded file.
-        let scan_dir = path
-            .canonicalize()
-            .unwrap_or_else(|_| path.clone())
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+        let scan_dir = canonical
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
+
+        // Pre-scan reads and parses every .quine file under scan_dir.
         if let Err(e) = pre_scan_modules(&mut ctx, &scan_dir) {
-            eprintln!("warning: {e}");
-        }
-        if let Err(e) = run_file(&mut ctx, &path) {
             eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+
+        // The main file was already parsed during pre-scan — execute it
+        // directly from the module map (no redundant read+parse).
+        let stem = canonical
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if let Some(module) = ctx.module_map.get(stem).cloned() {
+            ctx.loaded_files.insert(module.canonical_path.clone());
+            let base = PathBuf::from(&module.base_dir);
+            if let Err(e) = execute_file_commands(&mut ctx, module.commands, &base) {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        } else {
+            eprintln!("error: module \"{stem}\" not found in pre-scan");
             std::process::exit(1);
         }
     } else {
@@ -88,13 +103,16 @@ fn main() {
     }
 }
 
-/// Recursively scan `root_dir` for `.quine` files and populate
-/// `ctx.module_map` with stem→canonical_path entries.  Duplicate stems
-/// (e.g. `src/foo.quine` and `lib/foo.quine`) are a hard error.
+/// Recursively scan `root_dir` for `.quine` files, read and parse each one,
+/// and populate `ctx.module_map` with stem→ParsedModule entries.  Duplicate
+/// stems are a hard error.  All parse errors are caught here, before any
+/// execution begins.
 fn pre_scan_modules(ctx: &mut EngineContext, root_dir: &Path) -> Result<(), String> {
-    let mut seen: Map<String, String> = Map::default();
+    use quine_frontend::ParsedModule;
 
-    fn walk(dir: &Path, seen: &mut Map<String, String>) -> Result<(), String> {
+    let mut seen: Map<String, ParsedModule> = Map::default();
+
+    fn walk(dir: &Path, seen: &mut Map<String, ParsedModule>) -> Result<(), String> {
         let entries = fs::read_dir(dir).map_err(|e| format!("read_dir {:?}: {e}", dir))?;
         for entry in entries {
             let entry = entry.map_err(|e| format!("dir entry error: {e}"))?;
@@ -113,13 +131,33 @@ fn pre_scan_modules(ctx: &mut EngineContext, root_dir: &Path) -> Result<(), Stri
                 let canonical = path
                     .canonicalize()
                     .map_err(|e| format!("canonicalize {:?}: {e}", &path))?;
-                let path_str = canonical.to_string_lossy().to_string();
+                let canonical_str = canonical.to_string_lossy().to_string();
+                let base_dir = canonical
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                // Read and parse eagerly — all parse errors surface at startup.
+                let content =
+                    fs::read_to_string(&canonical).map_err(|e| format!("read {:?}: {e}", &path))?;
+                let commands = parse_file(&content).map_err(|e| {
+                    format!("parse error in {}: {e}", canonical_str)
+                })?;
+
                 if let Some(existing) = seen.get(&stem) {
                     return Err(format!(
-                        "duplicate module name \"{stem}\": {existing} and {path_str}"
+                        "duplicate module name \"{stem}\": {} and {canonical_str}",
+                        existing.canonical_path,
                     ));
                 }
-                seen.insert(stem, path_str);
+                seen.insert(
+                    stem,
+                    ParsedModule {
+                        commands,
+                        canonical_path: canonical_str,
+                        base_dir,
+                    },
+                );
             }
         }
         Ok(())
@@ -131,12 +169,15 @@ fn pre_scan_modules(ctx: &mut EngineContext, root_dir: &Path) -> Result<(), Stri
 }
 
 fn run_file(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+    let canonical_str = canonical.to_string_lossy().to_string();
+    if ctx.loaded_files.contains(&canonical_str) {
+        return Ok(());
+    }
+    ctx.loaded_files.insert(canonical_str.clone());
     let content = fs::read_to_string(path).map_err(|e| format!("{e}"))?;
     let cmds = parse_file(&content)?;
-    // Resolve base directory for relative imports inside this file.
-    let base_dir = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.clone())
+    let base_dir = canonical
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."));
@@ -149,37 +190,40 @@ fn run_file(ctx: &mut EngineContext, path: &PathBuf) -> Result<(), String> {
 ///
 /// Resolution order:
 /// 1. Bare module name (no `.` or `/` in the name) → look up in the
-///    pre-scanned `module_map`.
-/// 2. Otherwise → resolve as a file path relative to `base_dir`.
+///    pre-scanned `module_map`.  The module was already read and parsed
+///    during pre-scan, so this is a pure lookup — no file I/O.
+/// 2. Otherwise → resolve as a file path relative to `base_dir` (legacy
+///    path-based import with file I/O).
 fn import_file(ctx: &mut EngineContext, import_path: &str, base_dir: &Path) -> Result<(), String> {
-    // Check if this is a bare module name (no extension, no path separator).
     let is_module_name = !import_path.contains('.') && !import_path.contains('/');
-    let canonical_str = if is_module_name {
-        if let Some(path) = ctx.module_map.get(import_path) {
-            path.clone()
-        } else {
-            // Module not found in pre-scan; fall through to path resolution
-            // so the error message mentions the file path, not the module.
-            String::new()
-        }
-    } else {
-        String::new()
-    };
 
-    let resolved = if !canonical_str.is_empty() {
-        PathBuf::from(&canonical_str)
-    } else if Path::new(import_path).is_absolute() {
+    if is_module_name {
+        // Clone the module out to avoid borrow-conflict with &mut ctx below.
+        let module = ctx.module_map.get(import_path).cloned();
+        if let Some(module) = module {
+            if ctx.loaded_files.contains(&module.canonical_path) {
+                return Ok(());
+            }
+            ctx.loaded_files.insert(module.canonical_path.clone());
+            let base = PathBuf::from(&module.base_dir);
+            return execute_file_commands(ctx, module.commands, &base);
+        }
+        // Module not found — fall through to path resolution for a clear
+        // "file not found" error.
+    }
+
+    // Path-based import (legacy): file I/O at import time.
+    let resolved = if Path::new(import_path).is_absolute() {
         PathBuf::from(import_path)
     } else {
         base_dir.join(import_path)
     };
-
     let canonical = resolved
         .canonicalize()
         .map_err(|e| format!("cannot resolve import \"{import_path}\": {e}"))?;
     let canonical_str = canonical.to_string_lossy().to_string();
     if ctx.loaded_files.contains(&canonical_str) {
-        return Ok(()); // already loaded
+        return Ok(());
     }
     ctx.loaded_files.insert(canonical_str);
     run_file(ctx, &canonical)
