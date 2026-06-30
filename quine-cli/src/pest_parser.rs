@@ -357,15 +357,21 @@ fn parse_run_body(pair: pest::iterators::Pair<Rule>) -> RunBody {
 }
 
 pub fn parse_file(input: &str) -> Result<Vec<Command>, String> {
-    let pairs: Vec<_> = QuineParser::parse(Rule::TOP_LEVEL, input)
+    // Trim leading whitespace so a blank first line doesn't cause pest
+    // to match zero commands and trigger a false error.
+    let trimmed = input.trim_start();
+    let leading = input.len() - trimmed.len();
+
+    let pairs: Vec<_> = QuineParser::parse(Rule::TOP_LEVEL, trimmed)
         .map_err(|e| format!("{}", e))?
         .collect();
 
     let consumed = pairs.last().map_or(0, |p| p.as_span().end());
-    let remaining = input[consumed..].trim();
+    let remaining = trimmed[consumed..].trim();
     if !remaining.is_empty() {
         return Err(format!(
-            "unexpected input at position {consumed}: {remaining}"
+            "unexpected input at position {}: {remaining}",
+            leading + consumed,
         ));
     }
 
